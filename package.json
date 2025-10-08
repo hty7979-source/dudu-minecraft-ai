@@ -1,0 +1,102 @@
+{
+  "name": "dudu-minecraft-ai",
+  "version": "1.0.0-beta",
+  "description": "🤖 Dudu - Your AI-Powered Minecraft Gaming Companion. Free, local AI gaming buddy with smart automation and advanced building capabilities.",
+  "main": "main.js",
+  "type": "module",
+  "keywords": [
+    "minecraft",
+    "ai-companion", 
+    "gaming-ai",
+    "ollama",
+    "local-ai",
+    "minecraft-bot",
+    "ai-gaming",
+    "smart-automation",
+    "building-system",
+    "collection-system",
+    "gaming-companion",
+    "hobby-project",
+    "mineflayer",
+    "artificial-intelligence"
+  ],
+  "scripts": {
+    "start": "node main.js",
+    "dev": "node main.js --dev",
+    "test": "node test/test-systems.js",
+    "test-building": "node test/test-building.js",
+    "test-collection": "node test/test-collection.js",
+    "setup": "node scripts/setup.js",
+    "ollama-setup": "node scripts/ollama-setup.js",
+    "postinstall": "patch-package"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/dudu-minecraft-ai.git"
+  },
+  "homepage": "https://github.com/your-username/dudu-minecraft-ai#readme",
+  "bugs": {
+    "url": "https://github.com/your-username/dudu-minecraft-ai/issues"
+  },
+  "author": {
+    "name": "AI Gaming Community",
+    "email": "dudu@ai-gaming.dev",
+    "url": "https://github.com/your-username/dudu-minecraft-ai"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.17.2",
+    "@cerebras/cerebras_cloud_sdk": "^1.50.0",
+    "@google/genai": "^1.21.0",
+    "@huggingface/inference": "^2.8.1",
+    "@mistralai/mistralai": "^1.10.0",
+    "canvas": "^3.2.0",
+    "cheerio": "^1.1.2",
+    "express": "^4.21.2",
+    "google-translate-api-x": "^10.7.2",
+    "groq-sdk": "^0.15.0",
+    "minecraft-data": "^3.98.0",
+    "mineflayer": "^4.33.0",
+    "mineflayer-armor-manager": "^2.0.1",
+    "mineflayer-auto-eat": "^3.3.6",
+    "mineflayer-builder": "^1.0.1",
+    "mineflayer-collectblock": "^1.6.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "mineflayer-pvp": "^1.3.2",
+    "node-canvas-webgl": "PrismarineJS/node-canvas-webgl",
+    "open": "^10.2.0",
+    "openai": "^4.104.0",
+    "prismarine-item": "^1.17.0",
+    "prismarine-nbt": "^2.7.0",
+    "prismarine-schematic": "^1.2.3",
+    "prismarine-viewer": "^1.33.0",
+    "replicate": "^0.29.4",
+    "ses": "^1.14.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "three": "^0.128.0",
+    "vec3": "^0.1.10",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "eslint": "^9.36.0",
+    "eslint-plugin-no-floating-promise": "^2.0.0",
+    "globals": "^15.15.0",
+    "patch-package": "^8.0.1"
+  },
+  "peerDependencies": {
+    "ollama": "*"
+  },
+  "config": {
+    "recommended_models": {
+      "primary": "gemma2:9b",
+      "alternatives": ["llama3.1:8b", "qwen2.5:7b", "mistral:7b"],
+      "embedding": "nomic-embed-text"
+    }
+  }
+}
