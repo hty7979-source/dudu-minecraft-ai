@@ -69,15 +69,51 @@ export const actionsList = [
         name: '!build',
         description: 'Advanced building system with schematic support, natural language commands, and automatic material management.',
         params: {
-            'command': { type: 'string', description: 'Building command: "house", "tower", "bridge", or schematic file name' },
-            'size': { type: 'string', description: 'Size specification: "small", "medium", "large" or "WxHxD"' },
-            'material': { type: 'string', description: 'Primary building material (optional)' }
+            'name': { type: 'string', description: 'Schematic name to build (e.g., "platte", "mischhaus", "vollhaus")' },
+            'x': { type: 'int', description: 'X position (optional, uses current position if not specified)' },
+            'y': { type: 'int', description: 'Y position (optional, uses current position if not specified)' },
+            'z': { type: 'int', description: 'Z position (optional, uses current position if not specified)' }
         },
-        perform: runAsAction(async function(agent, command, size = 'medium', material = 'oak_planks') {
-            agent.bot.chat(`🏗️ Building ${command} (size: ${size}, material: ${material})`);
+        perform: runAsAction(async function(agent, name, x = null, y = null, z = null) {
+            if (!agent.building_manager) {
+                return "❌ BuildingManager not initialized!";
+            }
             
-            // Building logic placeholder - integrate with enhanced systems
-            return `Building completed: ${command}`;
+            agent.bot.chat(`🏗️ Starting to build ${name}...`);
+            
+            try {
+                // Use current position if coordinates not specified
+                if (x === null || y === null || z === null) {
+                    const pos = agent.bot.entity.position;
+                    x = x || Math.floor(pos.x);
+                    y = y || Math.floor(pos.y);
+                    z = z || Math.floor(pos.z);
+                }
+                
+                const result = await agent.building_manager.buildStructure(name, x, y, z);
+                return result;
+            } catch (error) {
+                const errorMsg = `❌ Building failed: ${error.message}`;
+                agent.bot.chat(errorMsg);
+                return errorMsg;
+            }
+        }, false, -1)
+    },
+    {
+        name: '!buildcancel',
+        description: 'Cancel the current building operation.',
+        perform: runAsAction(async function(agent) {
+            if (!agent.building_manager) {
+                return "❌ BuildingManager not initialized!";
+            }
+            
+            if (!agent.building_manager.isBuilding) {
+                return "✅ No active building to cancel.";
+            }
+            
+            agent.building_manager.cancelBuild();
+            agent.bot.chat("🛑 Building operation cancelled!");
+            return "🛑 Building cancelled successfully.";
         }, false, -1)
     },
     {

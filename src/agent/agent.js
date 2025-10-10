@@ -16,6 +16,7 @@ import { serverProxy, sendOutputToServer } from './mindserver_proxy.js';
 import settings from './settings.js';
 import { Task } from './tasks/tasks.js';
 import { speak } from './speak.js';
+import { BuildingManager } from './building_manager.js';
 
 export class Agent {
     async start(load_mem=false, init_message=null, count_id=0) {
@@ -32,6 +33,7 @@ export class Agent {
         this.npc = new NPCContoller(this);
         this.memory_bank = new MemoryBank();
         this.self_prompter = new SelfPrompter(this);
+        this.building_manager = new BuildingManager(null, this); // Bot wird später gesetzt
         convoManager.initAgent(this);
         await this.prompter.initExamples();
 
@@ -76,6 +78,10 @@ export class Agent {
                 addBrowserViewer(this.bot, count_id);
                 console.log('Initializing vision intepreter...');
                 this.vision_interpreter = new VisionInterpreter(this, settings.allow_vision);
+                
+                // Initialize BuildingManager with bot
+                this.building_manager.bot = this.bot;
+                console.log('🏗️ BuildingManager initialized with bot');
 
                 // wait for a bit so stats are not undefined
                 await new Promise((resolve) => setTimeout(resolve, 1000));

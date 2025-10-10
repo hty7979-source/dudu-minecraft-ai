@@ -338,6 +338,48 @@ export const queryList = [
         }
     },
     {
+        name: '!buildings',
+        description: 'List all available schematics and buildings that can be constructed.',
+        perform: function (agent) {
+            if (!agent.building_manager) {
+                return pad("❌ BuildingManager not initialized!");
+            }
+            
+            try {
+                const schematicsByCategory = agent.building_manager.listSchematicsByCategory();
+                let result = "🏗️ AVAILABLE BUILDINGS:\n\n";
+                
+                for (const [category, schematics] of Object.entries(schematicsByCategory)) {
+                    result += `📁 ${category.toUpperCase()}:\n`;
+                    schematics.forEach(schematic => {
+                        result += `   • ${schematic}\n`;
+                    });
+                    result += '\n';
+                }
+                
+                result += "💡 Use !build <name> to construct any building!";
+                return pad(result);
+            } catch (error) {
+                return pad(`❌ Error listing buildings: ${error.message}`);
+            }
+        }
+    },
+    {
+        name: '!buildstatus',
+        description: 'Check the status of current building operations.',
+        perform: function (agent) {
+            if (!agent.building_manager) {
+                return pad("❌ BuildingManager not initialized!");
+            }
+            
+            if (agent.building_manager.isBuilding) {
+                return pad(`🏗️ Currently building: ${agent.building_manager.currentBuild?.name || 'Unknown'}`);
+            } else {
+                return pad("✅ No active building operations. Ready to build!");
+            }
+        }
+    },
+    {
         name: '!help',
         description: 'Lists all available commands and their descriptions.',
         perform: async function (agent) {
