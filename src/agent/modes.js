@@ -98,7 +98,7 @@ const modes_list = [
         distance: 2,
         stuck_time: 0,
         last_time: Date.now(),
-        max_stuck_time: 120, // Increased from 20 to 120 seconds for mining operations
+        max_stuck_time: 20,
         prev_dig_block: null,
         update: async function (agent) {
             if (agent.isIdle()) { 
@@ -404,7 +404,7 @@ const modes_list = [
             await skills.avoidEnemies(bot, 15);
             
             // Versuche zu essen wenn möglich
-            await skills.consume(bot);
+            await skills.eat(bot);
         },
         
         engageTarget: async function(agent) {

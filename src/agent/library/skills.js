@@ -100,21 +100,7 @@ export async function craftRecipe(bot, itemName, num=1) {
     const requiredIngredients = mc.ingredientsFromPrismarineRecipe(recipe); //Items required to use the recipe once.
     const craftLimit = mc.calculateLimitingResource(inventory, requiredIngredients);
     
-    // 🔧 Fix: Refresh crafting table reference before crafting
-    let activeCraftingTable = craftingTable;
-    if (craftingTable) {
-        // Find fresh crafting table reference at the same position
-        activeCraftingTable = world.getNearestBlock(bot, 'crafting_table', 6);
-        if (!activeCraftingTable) {
-            console.log('⚠️ Crafting table not found - trying without table reference');
-            activeCraftingTable = null;
-        } else {
-            console.log(`🔧 Using crafting table at ${activeCraftingTable.position.x},${activeCraftingTable.position.y},${activeCraftingTable.position.z}`);
-        }
-    }
-    
-    console.log(`🔨 Crafting ${Math.min(craftLimit.num, num)}x ${itemName} with recipe ID ${recipe.id}`);
-    await bot.craft(recipe, Math.min(craftLimit.num, num), activeCraftingTable);
+    await bot.craft(recipe, Math.min(craftLimit.num, num), craftingTable);
     if(craftLimit.num<num) log(bot, `Not enough ${craftLimit.limitingResource} to craft ${num}, crafted ${craftLimit.num}. You now have ${world.getInventoryCounts(bot)[itemName]} ${itemName}.`);
     else log(bot, `Successfully crafted ${itemName}, you now have ${world.getInventoryCounts(bot)[itemName]} ${itemName}.`);
     if (placedTable) {
@@ -517,25 +503,8 @@ export async function collectBlock(bot, blockType, num=1, exclude=null) {
                 success = true;
             }
             else {
-                // Enhanced Mining System with dual approach and event monitoring
-                console.log(`🔧 Enhanced Mining: ${block.name} at ${block.position.x}, ${block.position.y}, ${block.position.z}`);
-                
-                // Try mineflayer-collectblock first (it works outside spawn protection)
-                if (bot.collectBlock && bot.collectBlock.collect) {
-                    try {
-                        console.log(`🎯 Trying mineflayer-collectblock for ${block.name}...`);
-                        await bot.collectBlock.collect(block);
-                        success = true;
-                        console.log(`✅ Successfully collected ${block.name} via mineflayer-collectblock`);
-                    } catch (collectError) {
-                        console.log(`⚠️ mineflayer-collectblock failed: ${collectError.message}`);
-                        console.log(`🔧 Falling back to Enhanced Mining System...`);
-                        success = await manualDigWithEvents(bot, block);
-                    }
-                } else {
-                    console.log(`🔧 Using Enhanced Mining System (no collectblock plugin)...`);
-                    success = await manualDigWithEvents(bot, block);
-                }
+                await bot.collectBlock.collect(block);
+                success = true;
             }
             if (success)
                 collected++;
@@ -612,7 +581,7 @@ export async function breakBlockAt(bot, x, y, z) {
             return true;
         }
 
-        if (bot.entity.position.distanceTo(block.position) > 5.0) {
+        if (bot.entity.position.distanceTo(block.position) > 4.5) {
             let pos = block.position;
             let movements = new pf.Movements(bot);
             movements.canPlaceOn = false;
@@ -638,139 +607,6 @@ export async function breakBlockAt(bot, x, y, z) {
     return true;
 }
 
-// Simplified block state application - only for critical blocks
-function applyBlockStates(blockType, placeOn, botPosition, targetPos) {
-    // Skip if block already has states (from schematic)
-    if (blockType.includes('[')) {
-        return blockType;
-    }
-    
-    // Extract base block name
-    const baseName = blockType.split('[')[0];
-
-    // Only handle the most important blocks to avoid issues
-    try {
-        // Furnaces (most common)
-        if (baseName === 'furnace' || baseName === 'blast_furnace' || baseName === 'smoker') {
-            return blockType + '[facing=north]';
-        }
-        
-        // Chests (most common)
-        if (baseName === 'chest' || baseName === 'trapped_chest') {
-            return blockType + '[facing=north,type=single]';
-        }
-        
-        // Logs (most common axis blocks)
-        if (baseName.includes('_log') || baseName === 'oak_log' || baseName === 'birch_log') {
-            if (placeOn === 'north' || placeOn === 'south') {
-                return blockType + '[axis=z]';
-            } else if (placeOn === 'east' || placeOn === 'west') {
-                return blockType + '[axis=x]';
-            } else {
-                return blockType + '[axis=y]';
-            }
-        }
-        
-        // Stairs (most common)
-        if (baseName.includes('_stairs')) {
-            const half = (placeOn === 'top') ? 'top' : 'bottom';
-            return blockType + `[facing=north,half=${half},shape=straight]`;
-        }
-        
-        // Slabs (most common)
-        if (baseName.includes('_slab')) {
-            const type = (placeOn === 'top') ? 'top' : 'bottom';
-            return blockType + `[type=${type}]`;
-        }
-        
-        // Betten - intelligente Ausrichtung basierend auf Bot-Position
-        if (baseName.includes('_bed')) {
-            // Berechne Richtung vom Bot zum Zielblock
-            const dx = targetPos.x - botPosition.x;
-            const dz = targetPos.z - botPosition.z;
-            
-            let facing = 'south'; // Standard
-            if (Math.abs(dx) > Math.abs(dz)) {
-                facing = dx > 0 ? 'east' : 'west';
-            } else {
-                facing = dz > 0 ? 'south' : 'north';
-            }
-            
-            return blockType + `[part=foot,facing=${facing}]`;
-        }
-        
-        // Türen - intelligente Ausrichtung
-        if (baseName.includes('_door')) {
-            // Ähnliche Logik wie bei Betten
-            const dx = targetPos.x - botPosition.x;
-            const dz = targetPos.z - botPosition.z;
-            
-            let facing = 'south';
-            if (Math.abs(dx) > Math.abs(dz)) {
-                facing = dx > 0 ? 'east' : 'west';
-            } else {
-                facing = dz > 0 ? 'south' : 'north';
-            }
-            
-            return blockType + `[half=lower,facing=${facing}]`;
-        }
-        
-        // Hohe Pflanzen
-        if (['sunflower', 'lilac', 'rose_bush', 'peony', 'tall_grass', 'large_fern'].includes(baseName)) {
-            return blockType + '[half=lower]';
-        }
-        
-    } catch (error) {
-        // If anything goes wrong, return original block type
-        console.log(`Block state error for ${blockType}: ${error.message}`);
-        return blockType;
-    }
-
-    // Return unchanged for all other blocks
-    return blockType;
-}
-
-// Complex helper functions removed - using simplified approach in applyBlockStates
-
-// Simple creative item helper - no global locks to avoid deadlocks
-async function ensureCreativeItem(bot, itemName) {
-    // Check if item already exists
-    let item = bot.inventory.items().find(item => item.name === itemName);
-    if (item) {
-        return item;
-    }
-    
-    try {
-        // Simple approach: find next available slot in hotbar/inventory (avoid armor slots 36-39)
-        let targetSlot = -1;
-        for (let slot = 0; slot <= 35; slot++) {
-            const item = bot.inventory.slots[slot];
-            if (!item || item.name === itemName) {
-                targetSlot = slot;
-                break;
-            }
-        }
-        
-        if (targetSlot === -1) {
-            targetSlot = 8; // Default to last hotbar slot if inventory is full
-        }
-        
-        await bot.creative.setInventorySlot(targetSlot, mc.makeItem(itemName, 1));
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Find the item
-        const newItem = bot.inventory.items().find(item => item.name === itemName);
-        if (newItem) {
-            return newItem;
-        }
-        
-        log(bot, `Could not find ${itemName} after creative placement`);
-        return null;
-    } catch (error) {
-        log(bot, `Creative inventory error for ${itemName}: ${error.message}`);
-        return null;
-    }
-}
 
 export async function placeBlock(bot, blockType, x, y, z, placeOn='bottom', dontCheat=false) {
     /**
@@ -804,12 +640,7 @@ export async function placeBlock(bot, blockType, x, y, z, placeOn='bottom', dont
             }
         }
 
-        // Enhanced block state support (simplified implementation)
-        if (!blockType.includes('[')) {
-            blockType = applyBlockStates(blockType, placeOn, bot.entity.position, { x, y, z });
-        }
-        
-        // Legacy support (kept for compatibility)
+        // invert the facing direction
         let face = placeOn === 'north' ? 'south' : placeOn === 'south' ? 'north' : placeOn === 'east' ? 'west' : 'east';
         if (blockType.includes('torch') && placeOn !== 'bottom') {
             // insert wall_ before torch
@@ -838,36 +669,17 @@ export async function placeBlock(bot, blockType, x, y, z, placeOn='bottom', dont
         if (useDelay) { await new Promise(resolve => setTimeout(resolve, blockPlaceDelay)); }
         let msg = '/setblock ' + Math.floor(x) + ' ' + Math.floor(y) + ' ' + Math.floor(z) + ' ' + blockType;
         bot.chat(msg);
-        // Handle complex blocks with special placement rules
-        if (blockType.includes('door') && blockType.includes('half=lower')) {
-            // For doors, only place upper half if this is the lower half
+        if (blockType.includes('door'))
             if (useDelay) { await new Promise(resolve => setTimeout(resolve, blockPlaceDelay)); }
-            // Replace lower with upper in the block state
-            let upperDoor = blockType.replace('half=lower', 'half=upper');
-            bot.chat('/setblock ' + Math.floor(x) + ' ' + Math.floor(y+1) + ' ' + Math.floor(z) + ' ' + upperDoor);
-        }
-        
-        if (blockType.includes('bed') && blockType.includes('part=foot')) {
-            // For beds, only place head part if this is the foot part
+            bot.chat('/setblock ' + Math.floor(x) + ' ' + Math.floor(y+1) + ' ' + Math.floor(z) + ' ' + blockType + '[half=upper]');
+        if (blockType.includes('bed'))
             if (useDelay) { await new Promise(resolve => setTimeout(resolve, blockPlaceDelay)); }
-            // Calculate head position based on facing direction
-            let headX = x, headZ = z;
-            if (blockType.includes('facing=north')) headZ--;
-            else if (blockType.includes('facing=south')) headZ++;
-            else if (blockType.includes('facing=east')) headX++;
-            else if (blockType.includes('facing=west')) headX--;
-            
-            // Replace foot with head in the block state
-            let headBed = blockType.replace('part=foot', 'part=head');
-            bot.chat('/setblock ' + Math.floor(headX) + ' ' + Math.floor(y) + ' ' + Math.floor(headZ) + ' ' + headBed);
-        }
+            bot.chat('/setblock ' + Math.floor(x) + ' ' + Math.floor(y) + ' ' + Math.floor(z-1) + ' ' + blockType + '[part=head]');
         log(bot, `Used /setblock to place ${blockType} at ${target_dest}.`);
         return true;
     }
 
-    // Extract base item name from block type (remove states)
-    let item_name = blockType.split('[')[0]; // Remove block states for item lookup
-    
+    let item_name = blockType;
     if (item_name == "redstone_wire")
         item_name = "redstone";
     else if (item_name === 'water') {
@@ -876,11 +688,10 @@ export async function placeBlock(bot, blockType, x, y, z, placeOn='bottom', dont
     else if (item_name === 'lava') {
         item_name = 'lava_bucket';
     }
-    
     let block_item = bot.inventory.items().find(item => item.name === item_name);
     if (!block_item && bot.game.gameMode === 'creative' && !bot.restrict_to_inventory) {
-        // Improved creative mode inventory handling with mutex-like behavior
-        block_item = await ensureCreativeItem(bot, item_name);
+        await bot.creative.setInventorySlot(36, mc.makeItem(item_name, 1)); // 36 is first hotbar slot
+        block_item = bot.inventory.items().find(item => item.name === item_name);
     }
     if (!block_item) {
         log(bot, `Don't have any ${item_name} to place.`);
@@ -888,9 +699,8 @@ export async function placeBlock(bot, blockType, x, y, z, placeOn='bottom', dont
     }
 
     const targetBlock = bot.blockAt(target_dest);
-    const baseBlockType = blockType.split('[')[0]; // Get base block name without states
-    if (targetBlock.name === baseBlockType || targetBlock.name === blockType || (targetBlock.name === 'grass_block' && baseBlockType === 'dirt')) {
-        log(bot, `${baseBlockType} already at ${targetBlock.position}.`);
+    if (targetBlock.name === blockType || (targetBlock.name === 'grass_block' && blockType === 'dirt')) {
+        log(bot, `${blockType} already at ${targetBlock.position}.`);
         return false;
     }
     const empty_blocks = ['air', 'water', 'lava', 'grass', 'short_grass', 'tall_grass', 'snow', 'dead_bush', 'fern'];
@@ -927,154 +737,36 @@ export async function placeBlock(bot, blockType, x, y, z, placeOn='bottom', dont
     }
     dirs.push(...Object.values(dir_map).filter(d => !dirs.includes(d)));
 
-    // Blocks to avoid building off of (interactive blocks)
-    const interactive_blocks = [
-        'chest', 'trapped_chest', 'ender_chest', 
-        'oak_door', 'birch_door', 'spruce_door', 'jungle_door', 'acacia_door', 'dark_oak_door', 'iron_door',
-        'furnace', 'blast_furnace', 'smoker', 
-        'crafting_table', 'enchanting_table', 'anvil', 'grindstone', 'stonecutter',
-        'brewing_stand', 'cauldron', 'composter', 'barrel',
-        'hopper', 'dispenser', 'dropper', 'observer',
-        'lectern', 'cartography_table', 'fletching_table', 'smithing_table',
-        'loom', 'note_block', 'jukebox', 'beacon'
-    ];
-
-    // First try: solid, non-interactive blocks
     for (let d of dirs) {
         const block = bot.blockAt(target_dest.plus(d));
-        if (!empty_blocks.includes(block.name) && !interactive_blocks.includes(block.name)) {
+        if (!empty_blocks.includes(block.name)) {
             buildOffBlock = block;
             faceVec = new Vec3(-d.x, -d.y, -d.z); // invert
             break;
         }
     }
-    
-    // Second try: any solid block (including interactive ones)
     if (!buildOffBlock) {
-        for (let d of dirs) {
-            const block = bot.blockAt(target_dest.plus(d));
-            if (!empty_blocks.includes(block.name)) {
-                buildOffBlock = block;
-                faceVec = new Vec3(-d.x, -d.y, -d.z); // invert
-                break;
-            }
-        }
-    }
-    
-    // Third try: aerial placement using /setblock (no reference block needed)
-    if (!buildOffBlock) {
-        log(bot, `No solid blocks around ${blockType}, using aerial placement mode...`);
-        
-        // For aerial placement, we need to use /setblock command
-        if (!bot.modes.isOn('cheat')) {
-            log(bot, `Cannot place ${blockType} at ${targetBlock.position}: no reference blocks and cheat mode not enabled.`);
-            return false;
-        }
-        
-        // Enhanced block state support for aerial placement (simplified implementation)
-        if (!blockType.includes('[')) {
-            blockType = applyBlockStates(blockType, placeOn, bot.entity.position, { x, y, z });
-        }
-        
-        // Legacy support (kept for compatibility)
-        let face = placeOn === 'north' ? 'south' : placeOn === 'south' ? 'north' : placeOn === 'east' ? 'west' : 'east';
-        if (blockType.includes('torch') && placeOn !== 'bottom') {
-            // insert wall_ before torch
-            blockType = blockType.replace('torch', 'wall_torch');
-            if (placeOn !== 'side' && placeOn !== 'top') {
-                blockType += `[facing=${face}]`;
-            }
-        }
-        if (blockType.includes('button') || blockType === 'lever') {
-            if (placeOn === 'top') {
-                blockType += `[face=ceiling]`;
-            }
-            else if (placeOn === 'bottom') {
-                blockType += `[face=floor]`;
-            }
-            else {
-                blockType += `[facing=${face}]`;
-            }
-        }
-        if (blockType === 'ladder' || blockType === 'repeater' || blockType === 'comparator') {
-            blockType += `[facing=${face}]`;
-        }
-        if (blockType.includes('stairs')) {
-            blockType += `[facing=${face}]`;
-        }
-        if (useDelay) { await new Promise(resolve => setTimeout(resolve, blockPlaceDelay)); }
-        let msg = '/setblock ' + Math.floor(x) + ' ' + Math.floor(y) + ' ' + Math.floor(z) + ' ' + blockType;
-        bot.chat(msg);
-        // Handle complex blocks with special placement rules
-        if (blockType.includes('door') && blockType.includes('half=lower')) {
-            // For doors, only place upper half if this is the lower half
-            if (useDelay) { await new Promise(resolve => setTimeout(resolve, blockPlaceDelay)); }
-            // Replace lower with upper in the block state
-            let upperDoor = blockType.replace('half=lower', 'half=upper');
-            bot.chat('/setblock ' + Math.floor(x) + ' ' + Math.floor(y+1) + ' ' + Math.floor(z) + ' ' + upperDoor);
-        }
-        
-        if (blockType.includes('bed') && blockType.includes('part=foot')) {
-            // For beds, only place head part if this is the foot part
-            if (useDelay) { await new Promise(resolve => setTimeout(resolve, blockPlaceDelay)); }
-            // Calculate head position based on facing direction
-            let headX = x, headZ = z;
-            if (blockType.includes('facing=north')) headZ--;
-            else if (blockType.includes('facing=south')) headZ++;
-            else if (blockType.includes('facing=east')) headX++;
-            else if (blockType.includes('facing=west')) headX--;
-            
-            // Replace foot with head in the block state
-            let headBed = blockType.replace('part=foot', 'part=head');
-            bot.chat('/setblock ' + Math.floor(headX) + ' ' + Math.floor(y) + ' ' + Math.floor(headZ) + ' ' + headBed);
-        }
-        log(bot, `Used /setblock for aerial placement of ${blockType} at ${target_dest}.`);
-        return true;
+        log(bot, `Cannot place ${blockType} at ${targetBlock.position}: nothing to place on.`);
+        return false;
     }
 
     const pos = bot.entity.position;
     const pos_above = pos.plus(Vec3(0,1,0));
     const dont_move_for = ['torch', 'redstone_torch', 'redstone', 'lever', 'button', 'rail', 'detector_rail', 
         'powered_rail', 'activator_rail', 'tripwire_hook', 'tripwire', 'water_bucket', 'string'];
-    // Movement handling with better error handling
-    try {
-        if (!dont_move_for.includes(item_name) && (pos.distanceTo(targetBlock.position) < 1.1 || pos_above.distanceTo(targetBlock.position) < 1.1)) {
-            // too close - move away
-            let goal = new pf.goals.GoalNear(targetBlock.position.x, targetBlock.position.y, targetBlock.position.z, 2);
-            let inverted_goal = new pf.goals.GoalInvert(goal);
-            bot.pathfinder.setMovements(new pf.Movements(bot));
-            
-            // Stop any existing pathfinder goals before setting new one
-            if (bot.pathfinder.isMoving()) {
-                bot.pathfinder.setGoal(null);
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-            
-            await bot.pathfinder.goto(inverted_goal);
-        }
-        
-        if (bot.entity.position.distanceTo(targetBlock.position) > 5.0) {
-            // too far - move closer (5 block range for optimal building)
-            let pos = targetBlock.position;
-            let movements = new pf.Movements(bot);
-            bot.pathfinder.setMovements(movements);
-            
-            // Stop any existing pathfinder goals before setting new one
-            if (bot.pathfinder.isMoving()) {
-                bot.pathfinder.setGoal(null);
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-            
-            await goToGoal(bot, new pf.goals.GoalNear(pos.x, pos.y, pos.z, 4));
-        }
-    } catch (pathError) {
-        // Log pathfinder errors but continue with block placement
-        log(bot, `Movement warning for ${blockType} placement: ${pathError.message}`);
-        // Don't return false here - try to place block anyway if we're reasonably close
-        if (bot.entity.position.distanceTo(targetBlock.position) > 8) {
-            log(bot, `Too far from target (${bot.entity.position.distanceTo(targetBlock.position).toFixed(1)} blocks), cannot place ${blockType}`);
-            return false;
-        }
+    if (!dont_move_for.includes(item_name) && (pos.distanceTo(targetBlock.position) < 1.1 || pos_above.distanceTo(targetBlock.position) < 1.1)) {
+        // too close
+        let goal = new pf.goals.GoalNear(targetBlock.position.x, targetBlock.position.y, targetBlock.position.z, 2);
+        let inverted_goal = new pf.goals.GoalInvert(goal);
+        bot.pathfinder.setMovements(new pf.Movements(bot));
+        await bot.pathfinder.goto(inverted_goal);
+    }
+    if (bot.entity.position.distanceTo(targetBlock.position) > 4.5) {
+        // too far
+        let pos = targetBlock.position;
+        let movements = new pf.Movements(bot);
+        bot.pathfinder.setMovements(movements);
+        await goToGoal(bot, new pf.goals.GoalNear(pos.x, pos.y, pos.z, 4));
     }
 
     // will throw error if an entity is in the way, and sometimes even if the block was placed
@@ -1084,70 +776,9 @@ export async function placeBlock(bot, blockType, x, y, z, placeOn='bottom', dont
         }
         else {
             await bot.equip(block_item, 'hand');
-            
-            // Handle bot orientation ONLY for problematic blocks that really need it
-            const problematicBlocks = ['bed']; // Only beds have critical orientation issues
-            const baseBlockName = item_name.split('[')[0];
-            const isOrientedBlock = problematicBlocks.some(oriented => baseBlockName.includes(oriented));
-            
-            if (isOrientedBlock && blockType.includes('[facing=')) {
-                // Extract desired facing from block state
-                const facingMatch = blockType.match(/facing=([^,\]]+)/);
-                if (facingMatch) {
-                    const desiredFacing = facingMatch[1];
-                    
-                    // Set bot yaw to ensure correct block orientation
-                    const facingToYaw = {
-                        'north': 0,      // 0 degrees
-                        'east': -Math.PI/2,  // -90 degrees  
-                        'south': Math.PI,    // 180 degrees
-                        'west': Math.PI/2    // 90 degrees
-                    };
-                    
-                    if (facingToYaw[desiredFacing] !== undefined) {
-                        const targetYaw = facingToYaw[desiredFacing];
-                        
-                        // Smooth rotation to target yaw
-                        log(bot, `Setting bot orientation for ${baseBlockName} facing ${desiredFacing} (yaw: ${(targetYaw * 180/Math.PI).toFixed(0)}°)`);
-                        await bot.look(targetYaw, 0, true); // yaw, pitch, force
-                        await new Promise(resolve => setTimeout(resolve, 200)); // Wait for orientation
-                    }
-                }
-            }
-            
             await bot.lookAt(buildOffBlock.position.offset(0.5, 0.5, 0.5));
-            
-            // Special handling for interactive blocks to avoid unwanted interactions
-            const interactive_blocks = [
-                'chest', 'trapped_chest', 'ender_chest', 
-                'oak_door', 'birch_door', 'spruce_door', 'jungle_door', 'acacia_door', 'dark_oak_door', 'iron_door',
-                'furnace', 'blast_furnace', 'smoker', 
-                'crafting_table', 'enchanting_table', 'anvil', 'grindstone', 'stonecutter',
-                'brewing_stand', 'cauldron', 'composter', 'barrel',
-                'hopper', 'dispenser', 'dropper', 'observer',
-                'lectern', 'cartography_table', 'fletching_table', 'smithing_table',
-                'loom', 'note_block', 'jukebox', 'beacon'
-            ];
-            
-            if (interactive_blocks.includes(buildOffBlock.name)) {
-                // For interactive blocks, use sneaking to avoid opening interfaces
-                bot.setControlState('sneak', true);
-                await new Promise(resolve => setTimeout(resolve, 50));
-                
-                try {
-                    await bot.placeBlock(buildOffBlock, faceVec);
-                    log(bot, `Placed ${blockType} at ${target_dest} (sneaking to avoid interaction with ${buildOffBlock.name}).`);
-                } finally {
-                    // Always stop sneaking
-                    bot.setControlState('sneak', false);
-                }
-            } else {
-                await bot.placeBlock(buildOffBlock, faceVec);
-                log(bot, `Placed ${blockType} at ${target_dest}.`);
-            }
-            
-            // No cleanup needed - using existing blocks or air references
-            
+            await bot.placeBlock(buildOffBlock, faceVec);
+            log(bot, `Placed ${blockType} at ${target_dest}.`);
             await new Promise(resolve => setTimeout(resolve, 200));
             return true;
         }
@@ -1174,21 +805,7 @@ export async function equip(bot, itemName) {
     let item = bot.inventory.slots.find(slot => slot && slot.name === itemName);
     if (!item) {
         if (bot.game.gameMode === "creative") {
-            // Find safe slot for equipment (avoid armor slots 36-39)
-            let targetSlot = -1;
-            for (let slot = 0; slot <= 35; slot++) {
-                const slotItem = bot.inventory.slots[slot];
-                if (!slotItem || slotItem.name === itemName) {
-                    targetSlot = slot;
-                    break;
-                }
-            }
-            
-            if (targetSlot === -1) {
-                targetSlot = 8; // Default to last hotbar slot
-            }
-            
-            await bot.creative.setInventorySlot(targetSlot, mc.makeItem(itemName, 1));
+            await bot.creative.setInventorySlot(36, mc.makeItem(itemName, 1));
             item = bot.inventory.items().find(item => item.name === itemName);
         }
         else {
@@ -2001,7 +1618,7 @@ export async function tillAndSow(bot, x, y, z, seedType=null) {
         }
     }
     // if distance is too far, move to the block
-    if (bot.entity.position.distanceTo(block.position) > 5.0) {
+    if (bot.entity.position.distanceTo(block.position) > 4.5) {
         let pos = block.position;
         bot.pathfinder.setMovements(new pf.Movements(bot));
         await goToGoal(bot, new pf.goals.GoalNear(pos.x, pos.y, pos.z, 4));
@@ -2046,7 +1663,7 @@ export async function activateNearestBlock(bot, type) {
         log(bot, `Could not find any ${type} to activate.`);
         return false;
     }
-    if (bot.entity.position.distanceTo(block.position) > 5.0) {
+    if (bot.entity.position.distanceTo(block.position) > 4.5) {
         let pos = block.position;
         bot.pathfinder.setMovements(new pf.Movements(bot));
         await goToGoal(bot, new pf.goals.GoalNear(pos.x, pos.y, pos.z, 4));
@@ -2474,581 +2091,3 @@ export async function useToolOn(bot, toolName, targetName) {
     log(bot, `Used ${toolName} on ${block.name}.`);
     return true;
  }
-
-/**
- * Verify if a block at specific position is broken/changed
- */
-function isBlockBroken(bot, originalBlock) {
-    try {
-        // Validate original block position
-        if (!originalBlock.position || 
-            (originalBlock.position.x === 0 && originalBlock.position.y === 0 && originalBlock.position.z === 0)) {
-            return { broken: false, reason: 'invalid_original_position', error: 'Original block has invalid position' };
-        }
-        
-        const currentBlock = bot.blockAt(originalBlock.position);
-        
-        // Block doesn't exist anymore (air)
-        if (!currentBlock || currentBlock.type === 0) {
-            return { broken: true, reason: 'block_is_air', newType: 0, position: originalBlock.position };
-        }
-        
-        // Block type changed from original
-        if (currentBlock.type !== originalBlock.type) {
-            return { broken: true, reason: 'block_type_changed', newType: currentBlock.type, position: originalBlock.position };
-        }
-        
-        // Block metadata changed (for blocks that change state when broken)
-        if (currentBlock.metadata !== originalBlock.metadata) {
-            return { broken: true, reason: 'block_metadata_changed', newType: currentBlock.type, position: originalBlock.position };
-        }
-        
-        // Block still exists and unchanged
-        return { broken: false, reason: 'block_unchanged', newType: currentBlock.type, position: originalBlock.position };
-        
-    } catch (error) {
-        // If we can't check the block, assume it might be broken
-        return { broken: true, reason: 'check_error', error: error.message };
-    }
-}
-
-/**
- * Manual digging with event monitoring for completion verification
- */
-async function manualDigWithEvents(bot, block) {
-    return new Promise(async (resolve) => {
-        // Validate block and position before starting
-        if (!block) {
-            console.log(`❌ No block provided to manualDigWithEvents`);
-            resolve(false);
-            return;
-        }
-        
-        if (!block.position) {
-            console.log(`❌ Block has no position: ${JSON.stringify(block)}`);
-            resolve(false);
-            return;
-        }
-        
-        // Check for invalid (0,0,0) position which causes server mismatch
-        if (block.position.x === 0 && block.position.y === 0 && block.position.z === 0) {
-            console.log(`❌ Invalid block position (0,0,0) - this causes server mismatch errors`);
-            resolve(false);
-            return;
-        }
-        
-        console.log(`🎯 Starting manualDigWithEvents for ${block.name} at ${block.position.x}, ${block.position.y}, ${block.position.z}`);
-        
-        let digCompleted = false;
-        const maxDigTime = 30000; // 30 seconds timeout
-        const startTime = Date.now();
-        
-        // Monitor blockUpdate event for completion
-        const onBlockUpdate = async (oldBlock, newBlock) => {
-            if (oldBlock && oldBlock.position.equals(block.position)) {
-                const breakCheck = isBlockBroken(bot, block);
-                console.log(`🔍 BlockUpdate event: ${breakCheck.reason} (type: ${block.type} → ${breakCheck.newType})`);
-                
-                if (breakCheck.broken) {
-                    console.log(`✅ Block mining confirmed via blockUpdate: ${block.name}`);
-                    digCompleted = true;
-                    
-                    // Collect dropped items
-                    try {
-                        await new Promise(resolve => setTimeout(resolve, 300)); // Wait for items to drop
-                        await pickupNearbyItems(bot);
-                        console.log(`📦 Items collected from ${block.name}`);
-                    } catch (itemError) {
-                        console.log(`⚠️ Could not collect items: ${itemError.message}`);
-                    }
-                    
-                    bot.removeListener('blockUpdate', onBlockUpdate);
-                    bot.removeListener('diggingCompleted', onDigComplete);
-                    bot.removeListener('diggingAborted', onDigAbort);
-                    resolve(true);
-                }
-            }
-        };
-        
-        const onDigComplete = async (completedBlock) => {
-            if (completedBlock && completedBlock.position.equals(block.position)) {
-                // Double-verify with our block check
-                const breakCheck = isBlockBroken(bot, block);
-                console.log(`✅ Dig completed event: ${completedBlock.name} (verified: ${breakCheck.broken})`);
-                
-                if (breakCheck.broken) {
-                    digCompleted = true;
-                    
-                    // Collect dropped items
-                    try {
-                        await new Promise(resolve => setTimeout(resolve, 300)); // Wait for items to drop
-                        await pickupNearbyItems(bot);
-                        console.log(`📦 Items collected from ${completedBlock.name}`);
-                    } catch (itemError) {
-                        console.log(`⚠️ Could not collect items: ${itemError.message}`);
-                    }
-                    
-                    bot.removeListener('blockUpdate', onBlockUpdate);
-                    bot.removeListener('diggingCompleted', onDigComplete);
-                    bot.removeListener('diggingAborted', onDigAbort);
-                    resolve(true);
-                } else {
-                    console.log(`⚠️ Dig event fired but block still exists: ${breakCheck.reason}`);
-                }
-            }
-        };
-        
-        const onDigAbort = (abortedBlock) => {
-            if (abortedBlock && abortedBlock.position.equals(block.position)) {
-                console.log(`⚠️ Dig aborted: ${abortedBlock.name}`);
-                bot.removeListener('blockUpdate', onBlockUpdate);
-                bot.removeListener('diggingCompleted', onDigComplete);
-                bot.removeListener('diggingAborted', onDigAbort);
-                resolve(false);
-            }
-        };
-        
-        // Set up event listeners
-        bot.on('blockUpdate', onBlockUpdate);
-        bot.on('diggingCompleted', onDigComplete);
-        bot.on('diggingAborted', onDigAbort);
-        
-        // Timeout fallback
-        const timeoutId = setTimeout(() => {
-            if (!digCompleted) {
-                console.log(`⏰ Dig timeout for ${block.name} after ${Date.now() - startTime}ms`);
-                bot.removeListener('blockUpdate', onBlockUpdate);
-                bot.removeListener('diggingCompleted', onDigComplete);
-                bot.removeListener('diggingAborted', onDigAbort);
-                resolve(false);
-            }
-        }, maxDigTime);
-        
-        try {
-            // Navigate to block using pathfinder
-            const distance = bot.entity.position.distanceTo(block.position);
-            if (distance > 5.0) {
-                console.log(`🚶 Navigating to ${block.name} at distance ${distance.toFixed(1)}`);
-                bot.pathfinder.setMovements(new pf.Movements(bot));
-                await bot.pathfinder.goto(new pf.goals.GoalNear(block.position.x, block.position.y, block.position.z, 4));
-            }
-            
-            // Equip best tool for this block type
-            console.log(`🔧 Equipping tool for ${block.name}...`);
-            await bot.tool.equipForBlock(block);
-            
-            // Look at the block
-            await bot.lookAt(block.position.offset(0.5, 0.5, 0.5));
-            
-            // Final distance check before mining
-            const finalDistance = bot.entity.position.distanceTo(block.position);
-            if (finalDistance > 5.5) {
-                console.log(`❌ Still too far from ${block.name}: ${finalDistance.toFixed(1)} blocks`);
-                resolve(false);
-                return;
-            }
-            
-            // Verify we can harvest this block
-            const heldItem = bot.heldItem;
-            const toolName = heldItem ? heldItem.name : 'hand';
-            console.log(`⛏️ Enhanced Mining: ${block.name} with ${toolName} (distance: ${finalDistance.toFixed(1)})`);
-            
-            if (!block.canHarvest(heldItem ? heldItem.type : null)) {
-                console.log(`❌ Cannot harvest ${block.name} with ${toolName}`);
-                resolve(false);
-                return;
-            }
-            
-            // Ensure block position is valid and synchronized
-            if (!block.position || block.position.x === 0 && block.position.y === 0 && block.position.z === 0) {
-                console.log(`❌ Invalid block position: ${JSON.stringify(block.position)}`);
-                resolve(false);
-                return;
-            }
-            
-            // Re-fetch block to ensure we have current state
-            const freshBlock = bot.blockAt(block.position);
-            if (!freshBlock || freshBlock.type === 0) {
-                console.log(`❌ Block no longer exists at ${block.position.x}, ${block.position.y}, ${block.position.z}`);
-                resolve(false);
-                return;
-            }
-            
-            console.log(`🔨 Starting dig animation for ${freshBlock.name} at ${freshBlock.position.x}, ${freshBlock.position.y}, ${freshBlock.position.z}`);
-            
-            // Use fresh block reference to avoid position mismatch
-            await bot.dig(freshBlock, true);
-            
-            // Advanced block verification - check multiple ways
-            await new Promise(resolve => setTimeout(resolve, 200)); // Small delay for server sync
-            
-            // Method 1: Direct block check at position
-            const currentBlock = bot.blockAt(block.position);
-            const blockStillExists = currentBlock && currentBlock.type !== 0;
-            
-            // Method 2: Check if block changed from original
-            const blockChanged = !currentBlock || currentBlock.type !== block.type;
-            
-            // Method 3: Check world state for block update
-            const originalBlockId = block.type;
-            const newBlockId = currentBlock ? currentBlock.type : 0;
-            
-            console.log(`🔍 Block verification: original=${originalBlockId}, current=${newBlockId}, exists=${!blockStillExists}, changed=${blockChanged}`);
-            
-            if (!blockStillExists || blockChanged) {
-                console.log(`✅ Block confirmed broken: ${block.name} (was ${originalBlockId}, now ${newBlockId})`);
-                
-                // Collect dropped items
-                try {
-                    await pickupNearbyItems(bot);
-                    console.log(`📦 Collected items from ${block.name}`);
-                } catch (itemError) {
-                    console.log(`⚠️ Could not collect items: ${itemError.message}`);
-                }
-                
-                clearTimeout(timeoutId);
-                bot.removeListener('blockUpdate', onBlockUpdate);
-                bot.removeListener('diggingCompleted', onDigComplete);
-                bot.removeListener('diggingAborted', onDigAbort);
-                resolve(true);
-            } else if (!digCompleted) {
-                // Block still there, mining might have failed
-                console.log(`❌ Block still exists: ${block.name} (type ${currentBlock.type})`);
-                console.log(`⏳ Waiting for mining events or timeout...`);
-            }
-            
-        } catch (error) {
-            console.log(`❌ Manual dig error: ${error.message}`);
-            clearTimeout(timeoutId);
-            bot.removeListener('blockUpdate', onBlockUpdate);
-            bot.removeListener('diggingCompleted', onDigComplete);
-            bot.removeListener('diggingAborted', onDigAbort);
-            resolve(false);
-        }
-    });
-}
-
-// Import Smart Crafting System
-import { smartCraft as _smartCraft, smartCollect as _smartCollect, SmartCraftingManager } from "./smart_crafting.js";
-
-// Import Enhanced Smart Collect System
-import { 
-    enhancedSmartCollect, 
-    batchCollectItems as _batchCollectItems,
-    getComprehensiveInventory as _getComprehensiveInventory,
-    SmartCollectEnhanced 
-} from "./smart_collect_enhanced.js";
-
-// Import Task Manager System
-import { 
-    TaskManager, 
-    createComplexTask as _createComplexTask,
-    executeTask as _executeTask,
-    createBuildingProject as _createBuildingProject 
-} from "./task_manager.js";
-
-// Wrapper functions that pass required skills functions
-export async function smartCraft(bot, itemName, count = 1) {
-    const skillsFunctions = {
-        craftRecipe,
-        collectBlock,
-        placeBlock,
-        smartCraft: smartCraft,
-        smartCollect: smartCollect
-    };
-    return await _smartCraft(bot, itemName, count, skillsFunctions);
-}
-
-export async function smartCollect(bot, blockType, count = 1) {
-    const skillsFunctions = {
-        craftRecipe,
-        collectBlock,
-        placeBlock,
-        smartCraft: smartCraft,
-        smartCollect: smartCollect
-    };
-    return await _smartCollect(bot, blockType, count, skillsFunctions);
-}
-
-/**
- * 📦 Enhanced Smart Collect mit vollständiger Chest- und Inventory-Integration
- * Verwendet das bewährte Smart Crafting System für:
- * - Automatisches Inventory-Management
- * - Chest-Scanning und Material-Extraktion  
- * - Multi-Source Collection (Chests + Mining + Crafting + Smelting)
- * - Robuste Container APIs und Tool-Management
- */
-export async function enhancedCollect(bot, blockType, count = 1) {
-    const skillsFunctions = {
-        craftRecipe,
-        collectBlock,
-        placeBlock,
-        smartCraft: smartCraft,
-        smartCollect: smartCollect,
-        putInChest,
-        takeFromChest,
-        viewChest
-    };
-    return await enhancedSmartCollect(bot, blockType, count, skillsFunctions);
-}
-
-/**
- * 🎯 Batch Collection - Sammle mehrere Items gleichzeitig
- * @param {Bot} bot - Der Mineflayer Bot
- * @param {Array} itemRequests - Array von {blockType, count} Objekten
- * @returns {Promise<Object>} Ergebnisse für jedes Item
- */
-export async function batchCollectItems(bot, itemRequests) {
-    const skillsFunctions = {
-        craftRecipe,
-        collectBlock,
-        placeBlock,
-        smartCraft: smartCraft,
-        smartCollect: smartCollect,
-        putInChest,
-        takeFromChest,
-        viewChest
-    };
-    return await _batchCollectItems(bot, itemRequests, skillsFunctions);
-}
-
-/**
- * 📊 Umfassende Inventar-Analyse inkl. Chest-Inhalte
- * @param {Bot} bot - Der Mineflayer Bot
- * @returns {Promise<Object>} Detaillierte Inventar- und Storage-Daten
- */
-export async function getComprehensiveInventory(bot) {
-    const skillsFunctions = {
-        craftRecipe,
-        collectBlock,
-        placeBlock,
-        smartCraft: smartCraft,
-        smartCollect: smartCollect,
-        putInChest,
-        takeFromChest,
-        viewChest
-    };
-    return await _getComprehensiveInventory(bot, skillsFunctions);
-}
-
-/**
- * 📝 Merkt sich wichtige Strukturen (Truhen, Werkbänke, Öfen) für zukünftige Nutzung
- * @param {Bot} bot - Der Mineflayer Bot
- * @returns {Promise<boolean>} True wenn erfolgreich
- */
-export async function rememberStructures(bot) {
-    try {
-        const craftingManager = new SmartCraftingManager(bot);
-        await craftingManager.rememberImportantStructures();
-        return true;
-    } catch (error) {
-        console.log(`❌ rememberStructures failed: ${error.message}`);
-        return false;
-    }
-}
-
-/**
- * 🔍 Findet die nächste bekannte Truhe aus dem Memory
- * @param {Bot} bot - Der Mineflayer Bot
- * @returns {Promise<Vec3|null>} Position der nächsten Truhe oder null
- */
-export async function findNearestKnownChest(bot) {
-    try {
-        const craftingManager = new SmartCraftingManager(bot);
-        return await craftingManager.findNearestRememberedChest();
-    } catch (error) {
-        console.log(`❌ findNearestKnownChest failed: ${error.message}`);
-        return null;
-    }
-}
-
-/**
- * 🔧 Findet die nächste bekannte Werkbank aus dem Memory
- * @param {Bot} bot - Der Mineflayer Bot  
- * @returns {Promise<Vec3|null>} Position der nächsten Werkbank oder null
- */
-export async function findNearestKnownCraftingTable(bot) {
-    try {
-        const craftingManager = new SmartCraftingManager(bot);
-        return await craftingManager.findNearestRememberedCraftingTable();
-    } catch (error) {
-        console.log(`❌ findNearestKnownCraftingTable failed: ${error.message}`);
-        return null;
-    }
-}
-
-export async function organizeInventory(bot) {
-    /**
-     * Organisiert das Inventar durch intelligente Einlagerung in nahegelegene Chests
-     * @param {Bot} bot - Der Mineflayer Bot
-     * @returns {Promise<boolean>} True wenn erfolgreich organisiert
-     */
-    try {
-        const craftingManager = new SmartCraftingManager(bot);
-        const success = await craftingManager.manageInventorySpace();
-        return success;
-    } catch (error) {
-        console.log(`❌ organizeInventory failed: ${error.message}`);
-        return false;
-    }
-}
-
-/**
- * Task Manager Functions - Komplexe Bauprojekte verwalten
- */
-
-export async function createComplexTask(bot, taskName, requirements, description = '') {
-    const skillsFunctions = {
-        craftRecipe,
-        collectBlock,
-        placeBlock,
-        smartCraft: smartCraft,
-        smartCollect: smartCollect,
-        goToPosition,
-        digDown,
-        goToSurface
-    };
-    return await _createComplexTask(bot, taskName, requirements, skillsFunctions);
-}
-
-export async function executeTask(bot, taskId) {
-    const skillsFunctions = {
-        craftRecipe,
-        collectBlock,
-        placeBlock,
-        smartCraft: smartCraft,
-        smartCollect: smartCollect,
-        goToPosition,
-        digDown,
-        goToSurface
-    };
-    return await _executeTask(bot, taskId, skillsFunctions);
-}
-
-export async function createBuildingProject(bot, projectName, requirements, description = '') {
-    const skillsFunctions = {
-        craftRecipe,
-        collectBlock,
-        placeBlock,
-        smartCraft: smartCraft,
-        smartCollect: smartCollect,
-        goToPosition,
-        digDown,
-        goToSurface
-    };
-    return await _createBuildingProject(bot, projectName, requirements, description);
-}
-
-/**
- * Clean up all temporary support blocks used during building
- * @param {MinecraftBot} bot - reference to the minecraft bot
- * @returns {Promise<boolean>} true if cleanup was successful
- */
-export async function cleanupTemporarySupports(bot) {
-    if (!bot.temporarySupportBlocks || bot.temporarySupportBlocks.length === 0) {
-        return true;
-    }
-    
-    log(bot, `Cleaning up ${bot.temporarySupportBlocks.length} temporary support blocks...`);
-    
-    for (const supportPos of bot.temporarySupportBlocks) {
-        try {
-            await breakBlockAt(bot, supportPos.x, supportPos.y, supportPos.z);
-            await new Promise(resolve => setTimeout(resolve, 200));
-        } catch (error) {
-            log(bot, `Warning: Could not remove support at ${supportPos}: ${error.message}`);
-        }
-    }
-    
-    bot.temporarySupportBlocks = [];
-    log(bot, `Temporary support cleanup completed.`);
-    return true;
-}
-
-/**
- * Task Manager Instance für erweiterte Funktionen
- */
-export async function getTaskManager(bot) {
-    const skillsFunctions = {
-        craftRecipe,
-        collectBlock,
-        placeBlock,
-        smartCraft: smartCraft,
-        smartCollect: smartCollect,
-        goToPosition,
-        digDown,
-        goToSurface
-    };
-    return new TaskManager(bot, skillsFunctions);
-}
-
-/**
- * Erweiterte Smelting-Funktion
- */
-export async function smeltItems(bot, inputItem, quantity, fuelType = 'coal') {
-    try {
-        // Finde Furnace
-        let furnace = bot.findBlock({
-            matching: (block) => block && (block.name === 'furnace' || block.name === 'blast_furnace'),
-            maxDistance: 16
-        });
-        
-        if (!furnace) {
-            console.log('🔥 No furnace found, crafting one...');
-            await smartCraft(bot, 'furnace', 1);
-            
-            // Platziere Furnace
-            const pos = bot.entity.position;
-            await placeBlock(bot, 'furnace', pos.x + 1, pos.y, pos.z);
-            
-            furnace = bot.findBlock({
-                matching: (block) => block && block.name === 'furnace',
-                maxDistance: 5
-            });
-        }
-        
-        if (!furnace) {
-            throw new Error('Could not find or create furnace');
-        }
-        
-        // Navigate to furnace
-        await goToPosition(bot, furnace.position.x, furnace.position.y, furnace.position.z, 2);
-        
-        // Open furnace
-        const furnaceWindow = await bot.openBlock(furnace);
-        
-        // Put input items
-        const inputItems = bot.inventory.items().filter(item => item.name === inputItem);
-        const inputSlot = furnaceWindow.containerSlots[0];
-        const fuelSlot = furnaceWindow.containerSlots[1];
-        
-        if (inputItems.length > 0) {
-            await furnaceWindow.deposit(inputItems[0].type, null, Math.min(quantity, inputItems[0].count), inputSlot);
-        }
-        
-        // Put fuel
-        const fuelItems = bot.inventory.items().filter(item => item.name === fuelType);
-        if (fuelItems.length > 0) {
-            await furnaceWindow.deposit(fuelItems[0].type, null, Math.min(8, fuelItems[0].count), fuelSlot);
-        }
-        
-        // Wait for smelting (simplified)
-        await new Promise(resolve => setTimeout(resolve, quantity * 10000)); // 10 sec per item
-        
-        // Retrieve result
-        const resultSlot = furnaceWindow.containerSlots[2];
-        if (resultSlot && resultSlot.count > 0) {
-            await furnaceWindow.withdraw(resultSlot.type, null, resultSlot.count);
-            console.log(`🔥 Smelted ${quantity}x ${inputItem}`);
-            furnaceWindow.close();
-            return true;
-        }
-        
-        furnaceWindow.close();
-        return false;
-        
-    } catch (error) {
-        console.log(`❌ Smelting failed: ${error.message}`);
-        return false;
-    }
-}

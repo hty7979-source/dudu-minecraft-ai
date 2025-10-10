@@ -1,0 +1,7 @@
+{
+    "name": "Dudu",
+
+    "model": "ollama/qwen3:8b",
+    
+    "embedding": "ollama"
+}

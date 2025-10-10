@@ -14,8 +14,6 @@ export function getCommand(name) {
     return commandMap[name];
 }
 
-export { commandList };
-
 export function blacklistCommands(commands) {
     const unblockable = ['!stop', '!stats', '!inventory', '!goal'];
     for (let command_name of commands) {
@@ -29,20 +27,12 @@ export function blacklistCommands(commands) {
 }
 
 const commandRegex = /!(\w+)(?:\(((?:-?\d+(?:\.\d+)?|true|false|"[^"]*")(?:\s*,\s*(?:-?\d+(?:\.\d+)?|true|false|"[^"]*"))*)\))?/
-const spaceCommandRegex = /!(\w+)\s+(.*)/  // New: Support space-separated arguments
 const argRegex = /-?\d+(?:\.\d+)?|true|false|"[^"]*"/g;
-const spaceArgRegex = /(?:"[^"]*"|\S+)/g;  // New: Parse space-separated args
 
 export function containsCommand(message) {
-    let commandMatch = message.match(commandRegex);
+    const commandMatch = message.match(commandRegex);
     if (commandMatch)
         return "!" + commandMatch[1];
-    
-    // Try space-separated format
-    commandMatch = message.match(spaceCommandRegex);
-    if (commandMatch)
-        return "!" + commandMatch[1];
-    
     return null;
 }
 
@@ -105,26 +95,14 @@ function checkInInterval(number, lowerBound, upperBound, endpointType) {
  * @returns {string | Object}
  */
 export function parseCommandMessage(message) {
-    let commandMatch = message.match(commandRegex);
-    let commandName, args;
-    
-    if (commandMatch) {
-        // Original parentheses format: !command("arg1", "arg2")
-        commandName = "!" + commandMatch[1];
-        if (commandMatch[2]) args = commandMatch[2].match(argRegex);
-        else args = [];
-    } else {
-        // Try space-separated format: !command arg1 arg2
-        commandMatch = message.match(spaceCommandRegex);
-        if (!commandMatch) return `Command is incorrectly formatted`;
-        
-        commandName = "!" + commandMatch[1];
-        if (commandMatch[2]) {
-            args = commandMatch[2].match(spaceArgRegex) || [];
-        } else {
-            args = [];
-        }
-    }
+    const commandMatch = message.match(commandRegex);
+    if (!commandMatch) return `Command is incorrectly formatted`;
+
+    const commandName = "!"+commandMatch[1];
+
+    let args;
+    if (commandMatch[2]) args = commandMatch[2].match(argRegex);
+    else args = [];
 
     const command = getCommand(commandName);
     if(!command) return `${commandName} is not a command.`
@@ -262,9 +240,22 @@ export function getCommandDocs(agent) {
         'BlockOrItemName':   'string',
         'boolean':           'bool'
     }
-    let docs = `\n*COMMAND DOCS\n You can use the following commands to perform actions and get information about the world. 
-    Use the commands with the syntax: !commandName or !commandName("arg1", 1.2, ...) if the command takes arguments.\n
-    Do not use codeblocks. Use double quotes for strings. Only use one command in each response, trailing commands and comments will be ignored.\n`;
+    let docs = `\n*DUDU COMMAND DOCS - Your AI Gaming Companion 🤖\n
+You are Dudu, an intelligent AI companion for Minecraft! Use these commands to help players with gaming tasks.
+
+✨ ENHANCED FEATURES:
+- Smart Collection (!smartCollect) - Intelligent multi-source gathering with inventory management
+- Smart Crafting (!smartCraft) - Advanced crafting with auto-material gathering and optimization  
+- Advanced Building (!build) - Natural language building with schematic support and auto-materials
+
+🎯 COMMAND SYNTAX:
+Use: !commandName or !commandName("arg1", 1.2, ...) for commands with parameters.
+- Use double quotes for strings
+- One command per response only
+- No codeblocks, trailing commands, or comments
+- Be helpful and gaming-focused in your responses
+
+🚀 PRIORITY SYSTEMS: Use !smartCollect, !smartCraft, !build instead of old commands for better performance!\n`;
     for (let command of commandList) {
         if (agent.blocked_actions.includes(command.name)) {
             continue;

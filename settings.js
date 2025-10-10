@@ -42,7 +42,7 @@ const settings = {
 
     "allow_insecure_coding": false, // allows newAction command and model can write/run code on your computer. enable at own risk
     "allow_vision": false, // allows vision model to interpret screenshots as inputs
-    "blocked_actions" : ["!newAction", "!collectBlocks", "!craftRecipe", "!checkBlueprint", "!checkBlueprintLevel", "!getBlueprint", "!getBlueprintLevel"] , // Disable old/unsafe commands - use modern systems: !smartCraft, !smartCollect, !build
+    "blocked_actions" : ["!newAction", "!collectBlocks", "!craftRecipe", "!checkBlueprint", "!checkBlueprintLevel", "!getBlueprint", "!getBlueprintLevel"] , // Disabled old/unsafe commands - use modern systems: !smartCraft, !smartCollect, !build
     "code_timeout_mins": -1, // minutes code is allowed to run. -1 for no timeout
     "relevant_docs_count": 5, // number of relevant code function docs to select for prompting. -1 for all
 
@@ -53,7 +53,7 @@ const settings = {
     "narrate_behavior": true, // chat simple automatic actions ('Picking up item!')
     "chat_bot_messages": true, // publicly chat messages to other bots
 
-    "block_place_delay": 400, // delay between placing blocks (ms) if using newAction. helps avoid bot being kicked by anti-cheat mechanisms on servers.
+    "block_place_delay": 0, // delay between placing blocks (ms) if using newAction. helps avoid bot being kicked by anti-cheat mechanisms on servers.
   
     "log_all_prompts": false, // log ALL prompts to file
 }

@@ -16,7 +16,6 @@ import { serverProxy, sendOutputToServer } from './mindserver_proxy.js';
 import settings from './settings.js';
 import { Task } from './tasks/tasks.js';
 import { speak } from './speak.js';
-import { BuildingManager } from './building_manager.js';
 
 export class Agent {
     async start(load_mem=false, init_message=null, count_id=0) {
@@ -77,10 +76,6 @@ export class Agent {
                 addBrowserViewer(this.bot, count_id);
                 console.log('Initializing vision intepreter...');
                 this.vision_interpreter = new VisionInterpreter(this, settings.allow_vision);
-                
-                console.log('Initializing building manager...');
-                const { BuildingManager } = await import('./building_manager.js');
-                this.buildingManager = new BuildingManager(this.bot, this);
 
                 // wait for a bit so stats are not undefined
                 await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -129,11 +124,6 @@ export class Agent {
             if (settings.only_chat_with.length > 0 && !settings.only_chat_with.includes(username)) return;
             try {
                 if (ignore_messages.some((m) => message.startsWith(m))) return;
-
-                // Handle building commands
-                if (await this.handleBuildingCommands(username, message)) {
-                    return; // Command was handled, don't process further
-                }
 
                 this.shut_up = false;
 
@@ -201,167 +191,6 @@ export class Agent {
         if (missingPlayers.length > 0) {
             console.log(`Missing players/bots: ${missingPlayers.join(', ')}`);
             this.cleanKill('Not all required players/bots are present in the world. Exiting.', 4);
-        }
-    }
-
-    async handleBuildingCommands(username, message) {
-        // Check if message is a building command
-        if (!message.startsWith('!')) return false;
-        
-        const parts = message.slice(1).split(' ');
-        const command = parts[0].toLowerCase();
-        
-        switch (command) {
-            case 'buildings':
-                this.handleBuildingsListCommand(username);
-                return true;
-                
-            case 'building':
-                if (parts[1] === 'info' && parts[2]) {
-                    this.handleBuildingInfoCommand(username, parts[2]);
-                } else {
-                    this.bot.chat('Usage: !building info <name>');
-                }
-                return true;
-                
-            case 'build':
-                if (parts[1]) {
-                    await this.handleBuildCommand(username, parts[1]);
-                } else {
-                    this.bot.chat('Usage: !build <structure_name>');
-                }
-                return true;
-                
-            case 'buildstatus':
-                this.handleBuildStatusCommand(username);
-                return true;
-                
-            case 'buildcancel':
-                this.handleBuildCancelCommand(username);
-                return true;
-                
-            case 'buildhelp':
-                this.handleBuildHelpCommand(username);
-                return true;
-                
-            case 'builds': // Kurz-Alias für !buildings
-                this.handleBuildListCommand(username);
-                return true;
-                
-            default:
-                return false; // Not a building command
-        }
-    }
-    
-    handleBuildingsListCommand(username) {
-        if (!this.buildingManager) {
-            this.bot.chat('Building system not initialized.');
-            return;
-        }
-        
-        const byCategory = this.buildingManager.listSchematicsByCategory();
-        
-        if (Object.keys(byCategory).length === 0) {
-            this.bot.chat('No buildings available. Add .schem files to the schematics folders.');
-            return;
-        }
-        
-        this.bot.chat('🏘️ Available buildings:');
-        for (const [category, schematics] of Object.entries(byCategory)) {
-            if (schematics.length > 0) {
-                const names = schematics.map(s => s.displayName).join(', ');
-                this.bot.chat(`📂 ${category} (${schematics.length}): ${names}`);
-            }
-        }
-    }
-    
-    handleBuildingInfoCommand(username, buildingName) {
-        if (!this.buildingManager) {
-            this.bot.chat('Building system not initialized.');
-            return;
-        }
-        
-        const info = this.buildingManager.getSchematicInfo(buildingName);
-        
-        // Split long messages
-        const lines = info.split('\n');
-        for (const line of lines) {
-            if (line.trim()) {
-                this.bot.chat(line);
-            }
-        }
-    }
-    
-    async handleBuildCommand(username, buildingName) {
-        if (!this.buildingManager) {
-            this.bot.chat('Building system not initialized.');
-            return;
-        }
-        
-        this.bot.chat(`🏗️ Starting build: ${buildingName}`);
-        
-        try {
-            const result = await this.buildingManager.buildStructure(buildingName);
-            this.bot.chat(result);
-        } catch (error) {
-            this.bot.chat(`❌ Build error: ${error.message}`);
-            console.error('Build error:', error);
-        }
-    }
-    
-    handleBuildStatusCommand(username) {
-        if (!this.buildingManager) {
-            this.bot.chat('Building system not initialized.');
-            return;
-        }
-        
-        const status = this.buildingManager.getBuildStatus();
-        this.bot.chat(status);
-    }
-    
-    handleBuildCancelCommand(username) {
-        if (!this.buildingManager) {
-            this.bot.chat('Building system not initialized.');
-            return;
-        }
-        
-        const result = this.buildingManager.cancelBuild();
-        this.bot.chat(result);
-    }
-    
-    // Neue Hilfsfunktionen für Building
-    handleBuildHelpCommand(username) {
-        this.bot.chat('🏗️ Building System Commands:');
-        this.bot.chat('!buildings - List all available structures');
-        this.bot.chat('!building info <name> - Get details about a structure');
-        this.bot.chat('!build <name> - Build a structure at your location');
-        this.bot.chat('!buildstatus - Check current build progress');
-        this.bot.chat('!buildcancel - Cancel current build');
-        this.bot.chat('!buildhelp - Show this help');
-    }
-    
-    handleBuildListCommand(username) {
-        if (!this.buildingManager) {
-            this.bot.chat('Building system not initialized.');
-            return;
-        }
-        
-        const schematics = this.buildingManager.listSchematics();
-        if (schematics.length === 0) {
-            this.bot.chat('📭 No buildings available. Add .schem files to schematics folders.');
-            return;
-        }
-        
-        this.bot.chat(`🏘️ ${schematics.length} buildings available:`);
-        
-        // Zeige maximal 5 auf einmal, um Chat nicht zu spammen
-        const display = schematics.slice(0, 5);
-        display.forEach((name, index) => {
-            this.bot.chat(`${index + 1}. ${name.replace(/_/g, ' ')}`);
-        });
-        
-        if (schematics.length > 5) {
-            this.bot.chat(`... and ${schematics.length - 5} more. Use !buildings for full list.`);
         }
     }
 
