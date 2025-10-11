@@ -27,18 +27,20 @@ Dudu is an **AI-powered gaming companion** that revolutionizes how AI interacts 
 ### 📋 **Requirements**
 - 🎮 Minecraft Java Edition (v1.21.6 recommended)
 - 💻 Node.js (v18+) 
-- 🧠 Ollama (free local AI - no API keys needed!)
+- 🧠 LM Studio (free local AI - no API keys needed!)
+- 📦 Qwen3-8B + EmbeddingGemma-300M models
 
 ### 🛠️ **Installation**
 
 ```bash
-# 1. Install Ollama (free local AI)
-# Windows: winget install Ollama.Ollama
-# macOS: brew install ollama  
-# Linux: curl -fsSL https://ollama.com/install.sh | sh
+# 1. Install LM Studio (free local AI)
+# Download from: https://lmstudio.ai/
 
-# 2. Install AI model (recommended)
-ollama pull gemma2:9b
+# 2. Install AI models (recommended)
+# In LM Studio:
+# - Download: qwen/qwen3-8b (Chat Model)
+# - Download: embeddinggemma-300m (Embedding Model)
+# - Start Local Server on port 1234
 
 # 3. Get Dudu
 git clone https://github.com/your-username/dudu-minecraft-ai.git
@@ -47,11 +49,11 @@ cd dudu-minecraft-ai
 # 4. Install dependencies
 npm install
 
-# 5. Quick config (uses Ollama by default)
+# 5. Quick config (uses LM Studio by default)
 cp keys.example.json keys.json
 
-# 6. Wake up Dudu!
-npm start
+# 6. Wake up Dudu with LM Studio!
+npm start profiles/lmstudio.json
 ```
 
 ### 🎮 **First Chat with Dudu**
@@ -88,11 +90,12 @@ In Minecraft chat:
 
 | Feature | Dudu | Typical AI Bots |
 |---------|------|-----------------|
-| **Cost** | 🟢 100% Free (Ollama) | 🔴 Expensive APIs |
+| **Cost** | 🟢 100% Free (LM Studio) | 🔴 Expensive APIs |
 | **Privacy** | 🟢 Local AI | 🔴 Cloud processing |
 | **Setup** | 🟢 5-minute install | 🔴 Complex configuration |
 | **Gaming Focus** | 🟢 Gaming-optimized | 🔴 General purpose |
 | **Smart Systems** | 🟢 Advanced automation | 🔴 Basic commands |
+| **Hotswap** | 🟢 Model switching | 🔴 Fixed models |
 
 ## 🛠️ **Advanced Features**
 
@@ -118,12 +121,13 @@ In Minecraft chat:
 
 **AI Model Selection**
 ```json
-// Recommended (Free & Local)
-"model": "ollama/gemma2:9b"
+// Recommended (Free & Local) - DEFAULT
+"model": "lmstudio/qwen/qwen3-8b"
+"embedding": "lmstudio"           // Uses embeddinggemma-300m
 
 // Alternatives
+"model": "ollama/gemma2:9b"       // Ollama alternative
 "model": "ollama/llama3.1:8b"     // General purpose
-"model": "ollama/qwen2.5:7b"      // Fast responses
 "model": "gpt-4o-mini"            // Cloud (requires API key)
 ```
 
@@ -206,9 +210,18 @@ Dudu isn't just a Minecraft bot - it's a **proof of concept** for the future of 
 
 ## 🎉 **Ready to Start?**
 
+### 🧠 **LM Studio Setup (Default)**
+
+1. **Download LM Studio**: https://lmstudio.ai/
+2. **Install Models**:
+   - **Chat**: `qwen/qwen3-8b` (main conversation model)
+   - **Embeddings**: `embeddinggemma-300m` (for memory & similarity)
+3. **Start Server**: Enable "Local Server" on port 1234
+4. **Hotswap Ready**: Switch models anytime while Dudu runs!
+
 ```bash
 # Quick start command
-git clone https://github.com/your-username/dudu-minecraft-ai.git && cd dudu-minecraft-ai && npm install && npm start
+git clone https://github.com/your-username/dudu-minecraft-ai.git && cd dudu-minecraft-ai && npm install && npm start profiles/lmstudio.json
 ```
 
 ---

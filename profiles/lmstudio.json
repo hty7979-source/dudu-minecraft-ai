@@ -1,0 +1,7 @@
+{
+    "name": "lmstudio",
+
+    "model": "lmstudio",
+    
+    "embedding": "lmstudio"
+}
