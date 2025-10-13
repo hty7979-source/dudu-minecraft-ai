@@ -2,15 +2,23 @@ import * as skills from '../library/skills.js';
 import settings from '../settings.js';
 import convoManager from '../conversation.js';
 
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
 
-function runAsAction (actionFn, resume = false, timeout = -1) {
-    let actionLabel = null;  // Will be set on first use
+/**
+ * Wraps an action function to integrate with the agent's action system
+ * @param {Function} actionFn - The action function to wrap
+ * @param {boolean} resume - Whether the action can be resumed
+ * @param {number} timeout - Timeout in minutes (-1 for no timeout)
+ */
+function runAsAction(actionFn, resume = false, timeout = -1) {
+    let actionLabel = null;
     
     const wrappedAction = async function (agent, ...args) {
-        // Set actionLabel only once, when the action is first created
         if (!actionLabel) {
             const actionObj = actionsList.find(a => a.perform === wrappedAction);
-            actionLabel = actionObj.name.substring(1); // Remove the ! prefix
+            actionLabel = actionObj.name.substring(1);
         }
 
         const actionFnWithAgent = async () => {
@@ -25,121 +33,29 @@ function runAsAction (actionFn, resume = false, timeout = -1) {
     return wrappedAction;
 }
 
-export const actionsList = [
-    {
-        name: '!smartCollect',
-        description: 'Intelligently collect items using multi-source strategy: check chests → craft if possible → smelt if needed → mine as last resort. Handles inventory management automatically.',
-        params: {
-            'items': { type: 'string', description: 'Comma-separated list of items to collect (e.g., "iron_ingot:5,coal:10")' },
-            'strategy': { type: 'string', description: 'Collection strategy: "auto" (default), "chests_first", "crafting_only", "mining_only"' }
-        },
-        perform: runAsAction(async function(agent, items, strategy = 'auto') {
-            const itemRequests = items.split(',').map(item => {
-                const [name, count] = item.trim().split(':');
-                return { name: name.trim(), count: parseInt(count) || 1 };
-            });
-            
-            agent.bot.chat(`🤖 Starting smart collection: ${items} (strategy: ${strategy})`);
-            
-            // Smart collection logic placeholder - integrate with enhanced systems
-            for (const request of itemRequests) {
-                agent.bot.chat(`🔍 Collecting ${request.count}x ${request.name}...`);
-                // Add actual smart collection implementation here
+/**
+ * Helper for combat mode commands - reduces boilerplate
+ */
+function createCombatAction(name, description, fn, params = {}) {
+    return {
+        name: `!combat${name}`,
+        description,
+        params,
+        perform: async function(agent, ...args) {
+            const bot = agent.bot;
+            if (!bot.modes?.self_defense) {
+                return 'Combat mode not available.';
             }
-            
-            return `Smart collection completed for: ${items}`;
-        }, false, -1)
-    },
-    {
-        name: '!smartCraft',
-        description: 'Enhanced crafting system with automatic material gathering, recipe optimization, and intelligent inventory management.',
-        params: {
-            'item': { type: 'string', description: 'Item to craft' },
-            'quantity': { type: 'int', description: 'Quantity to craft', domain: [1, 64] },
-            'auto_gather': { type: 'boolean', description: 'Automatically gather missing materials' }
-        },
-        perform: runAsAction(async function(agent, item, quantity = 1, auto_gather = true) {
-            agent.bot.chat(`🔨 Smart crafting ${quantity}x ${item} (auto-gather: ${auto_gather})`);
-            
-            // Smart crafting logic placeholder - integrate with enhanced systems
-            return `Smart crafting completed: ${quantity}x ${item}`;
-        }, false, -1)
-    },
-    {
-        name: '!build',
-        description: 'Advanced building system with schematic support, natural language commands, and automatic material management.',
-        params: {
-            'name': { type: 'string', description: 'Schematic name to build (e.g., "platte", "mischhaus", "vollhaus")' },
-            'x': { type: 'int', description: 'X position (optional, uses current position if not specified)' },
-            'y': { type: 'int', description: 'Y position (optional, uses current position if not specified)' },
-            'z': { type: 'int', description: 'Z position (optional, uses current position if not specified)' }
-        },
-        perform: runAsAction(async function(agent, name, x = null, y = null, z = null) {
-            if (!agent.building_manager) {
-                return "❌ BuildingManager not initialized!";
-            }
-            
-            agent.bot.chat(`🏗️ Starting to build ${name}...`);
-            
-            try {
-                // Use current position if coordinates not specified
-                if (x === null || y === null || z === null) {
-                    const pos = agent.bot.entity.position;
-                    x = x || Math.floor(pos.x);
-                    y = y || Math.floor(pos.y);
-                    z = z || Math.floor(pos.z);
-                }
-                
-                const result = await agent.building_manager.buildStructure(name, x, y, z);
-                return result;
-            } catch (error) {
-                const errorMsg = `❌ Building failed: ${error.message}`;
-                agent.bot.chat(errorMsg);
-                return errorMsg;
-            }
-        }, false, -1)
-    },
-    {
-        name: '!buildcancel',
-        description: 'Cancel the current building operation.',
-        perform: runAsAction(async function(agent) {
-            if (!agent.building_manager) {
-                return "❌ BuildingManager not initialized!";
-            }
-            
-            if (!agent.building_manager.isBuilding) {
-                return "✅ No active building to cancel.";
-            }
-            
-            agent.building_manager.cancelBuild();
-            agent.bot.chat("🛑 Building operation cancelled!");
-            return "🛑 Building cancelled successfully.";
-        }, false, -1)
-    },
-    {
-        name: '!newAction',
-        description: 'Perform new and unknown custom behaviors that are not available as a command.', 
-        params: {
-            'prompt': { type: 'string', description: 'A natural language prompt to guide code generation. Make a detailed step-by-step plan.' }
-        },
-        perform: async function(agent, prompt) {
-            // just ignore prompt - it is now in context in chat history
-            if (!settings.allow_insecure_coding) { 
-                agent.openChat('newAction is disabled. Enable with allow_insecure_coding=true in settings.js');
-                return "newAction not allowed! Code writing is disabled in settings. Notify the user.";
-            }
-            let result = "";
-            const actionFn = async () => {
-                try {
-                    result = await agent.coder.generateCode(agent.history);
-                } catch (e) {
-                    result = 'Error generating code: ' + e.toString();
-                }
-            };
-            await agent.actions.runAction('action:newAction', actionFn, {timeout: settings.code_timeout_mins});
-            return result;
+            return fn(agent, bot.modes.self_defense, ...args);
         }
-    },
+    };
+}
+
+// ============================================================================
+// CORE SYSTEM ACTIONS
+// ============================================================================
+
+const CORE_ACTIONS = [
     {
         name: '!stop',
         description: 'Force stop all actions and commands that are currently executing.',
@@ -178,6 +94,36 @@ export const actionsList = [
             return agent.name + "'s chat history was cleared, starting new conversation from scratch.";
         }
     },
+    {
+        name: '!newAction',
+        description: 'Perform new and unknown custom behaviors that are not available as a command.', 
+        params: {
+            'prompt': { type: 'string', description: 'A natural language prompt to guide code generation. Make a detailed step-by-step plan.' }
+        },
+        perform: async function(agent, prompt) {
+            if (!settings.allow_insecure_coding) { 
+                agent.openChat('newAction is disabled. Enable with allow_insecure_coding=true in settings.js');
+                return "newAction not allowed! Code writing is disabled in settings. Notify the user.";
+            }
+            let result = "";
+            const actionFn = async () => {
+                try {
+                    result = await agent.coder.generateCode(agent.history);
+                } catch (e) {
+                    result = 'Error generating code: ' + e.toString();
+                }
+            };
+            await agent.actions.runAction('action:newAction', actionFn, {timeout: settings.code_timeout_mins});
+            return result;
+        }
+    }
+];
+
+// ============================================================================
+// MOVEMENT & NAVIGATION ACTIONS
+// ============================================================================
+
+const MOVEMENT_ACTIONS = [
     {
         name: '!goToPlayer',
         description: 'Go to the given player.',
@@ -222,7 +168,7 @@ export const actionsList = [
         },
         perform: runAsAction(async (agent, block_type, range) => {
             if (range < 32) {
-                log(agent.bot, `Minimum search range is 32.`);
+                skills.log(agent.bot, `Minimum search range is 32.`);
                 range = 32;
             }
             await skills.goToNearestBlock(agent.bot, block_type, 4, range);
@@ -264,12 +210,50 @@ export const actionsList = [
         perform: runAsAction(async (agent, name) => {
             const pos = agent.memory_bank.recallPlace(name);
             if (!pos) {
-            skills.log(agent.bot, `No location named "${name}" saved.`);
-            return;
+                skills.log(agent.bot, `No location named "${name}" saved.`);
+                return;
             }
             await skills.goToPosition(agent.bot, pos[0], pos[1], pos[2], 1);
         })
     },
+    {
+        name: '!stay',
+        description: 'Stay in the current location no matter what. Pauses all modes.',
+        params: {'type': { type: 'int', description: 'The number of seconds to stay. -1 for forever.', domain: [-1, Number.MAX_SAFE_INTEGER] }},
+        perform: runAsAction(async (agent, seconds) => {
+            await skills.stay(agent.bot, seconds);
+        })
+    },
+    {
+        name: '!goToBed',
+        description: 'Go to the nearest bed and sleep.',
+        perform: runAsAction(async (agent) => {
+            await skills.goToBed(agent.bot);
+        })
+    },
+    {
+        name: '!digDown',
+        description: 'Digs down a specified distance. Will stop if it reaches lava, water, or a fall of >=4 blocks below the bot.',
+        params: {'distance': { type: 'int', description: 'Distance to dig down', domain: [1, Number.MAX_SAFE_INTEGER] }},
+        perform: runAsAction(async (agent, distance) => {
+            await skills.digDown(agent.bot, distance);
+        })
+    },
+    {
+        name: '!goToSurface',
+        description: 'Moves the bot to the highest block above it (usually the surface).',
+        params: {},
+        perform: runAsAction(async (agent) => {
+            await skills.goToSurface(agent.bot);
+        })
+    }
+];
+
+// ============================================================================
+// INVENTORY & ITEM MANAGEMENT ACTIONS
+// ============================================================================
+
+const INVENTORY_ACTIONS = [
     {
         name: '!givePlayer',
         description: 'Give the specified item to the given player.',
@@ -299,6 +283,27 @@ export const actionsList = [
         })
     },
     {
+        name: '!discard',
+        description: 'Discard the given item from the inventory.',
+        params: {
+            'item_name': { type: 'ItemName', description: 'The name of the item to discard.' },
+            'num': { type: 'int', description: 'The number of items to discard.', domain: [1, Number.MAX_SAFE_INTEGER] }
+        },
+        perform: runAsAction(async (agent, item_name, num) => {
+            const start_loc = agent.bot.entity.position;
+            await skills.moveAway(agent.bot, 5);
+            await skills.discard(agent.bot, item_name, num);
+            await skills.goToPosition(agent.bot, start_loc.x, start_loc.y, start_loc.z, 0);
+        })
+    }
+];
+
+// ============================================================================
+// CHEST & STORAGE ACTIONS
+// ============================================================================
+
+const STORAGE_ACTIONS = [
+    {
         name: '!putInChest',
         description: 'Put the given item in the nearest chest.',
         params: {
@@ -327,20 +332,36 @@ export const actionsList = [
         perform: runAsAction(async (agent) => {
             await skills.viewChest(agent.bot);
         })
-    },
+    }
+];
+
+// ============================================================================
+// RESOURCE GATHERING & CRAFTING ACTIONS
+// ============================================================================
+
+const GATHERING_ACTIONS = [
     {
-        name: '!discard',
-        description: 'Discard the given item from the inventory.',
+        name: '!smartCollect',
+        description: 'Intelligently collect items using multi-source strategy: check chests → craft if possible → smelt if needed → mine as last resort. Handles inventory management automatically.',
         params: {
-            'item_name': { type: 'ItemName', description: 'The name of the item to discard.' },
-            'num': { type: 'int', description: 'The number of items to discard.', domain: [1, Number.MAX_SAFE_INTEGER] }
+            'items': { type: 'string', description: 'Comma-separated list of items to collect (e.g., "iron_ingot:5,coal:10")' },
+            'strategy': { type: 'string', description: 'Collection strategy: "auto" (default), "chests_first", "crafting_only", "mining_only"' }
         },
-        perform: runAsAction(async (agent, item_name, num) => {
-            const start_loc = agent.bot.entity.position;
-            await skills.moveAway(agent.bot, 5);
-            await skills.discard(agent.bot, item_name, num);
-            await skills.goToPosition(agent.bot, start_loc.x, start_loc.y, start_loc.z, 0);
-        })
+        perform: runAsAction(async function(agent, items, strategy = 'auto') {
+            const itemRequests = items.split(',').map(item => {
+                const [name, count] = item.trim().split(':');
+                return { name: name.trim(), count: parseInt(count) || 1 };
+            });
+            
+            agent.bot.chat(`🤖 Starting smart collection: ${items} (strategy: ${strategy})`);
+            
+            for (const request of itemRequests) {
+                agent.bot.chat(`🔍 Collecting ${request.count}x ${request.name}...`);
+                // Add actual smart collection implementation here
+            }
+            
+            return `Smart collection completed for: ${items}`;
+        }, false, -1)
     },
     {
         name: '!collectBlocks',
@@ -351,7 +372,20 @@ export const actionsList = [
         },
         perform: runAsAction(async (agent, type, num) => {
             await skills.collectBlock(agent.bot, type, num);
-        }, false, 10) // 10 minute timeout
+        }, false, 10)
+    },
+    {
+        name: '!smartCraft',
+        description: 'Enhanced crafting system with automatic material gathering, recipe optimization, and intelligent inventory management.',
+        params: {
+            'item': { type: 'string', description: 'Item to craft' },
+            'quantity': { type: 'int', description: 'Quantity to craft', domain: [1, 64] },
+            'auto_gather': { type: 'boolean', description: 'Automatically gather missing materials' }
+        },
+        perform: runAsAction(async function(agent, item, quantity = 1, auto_gather = true) {
+            agent.bot.chat(`🔨 Smart crafting ${quantity}x ${item} (auto-gather: ${auto_gather})`);
+            return `Smart crafting completed: ${quantity}x ${item}`;
+        }, false, -1)
     },
     {
         name: '!craftRecipe',
@@ -387,8 +421,110 @@ export const actionsList = [
         perform: runAsAction(async (agent) => {
             await skills.clearNearestFurnace(agent.bot);
         })
+    }
+];
+
+// ============================================================================
+// BUILDING & CONSTRUCTION ACTIONS
+// ============================================================================
+
+const BUILDING_ACTIONS = [
+    {
+        name: '!build',
+        description: 'Advanced building system with schematic support. Builds structures from .schem files at optimal position near player.',
+        params: {
+            'name': { type: 'string', description: 'Schematic name to build (e.g., "platte", "mischhaus", "vollhaus")' },
+            'x': { type: 'int', description: 'X position (optional, auto-calculated if not specified)' },
+            'y': { type: 'int', description: 'Y position (optional, auto-calculated if not specified)' },
+            'z': { type: 'int', description: 'Z position (optional, auto-calculated if not specified)' }
+        },
+        perform: runAsAction(async function(agent, name, x = null, y = null, z = null) {
+            if (!agent.building_manager) {
+                return "❌ BuildingManager not initialized!";
+            }
+            
+            try {
+                let position = null;
+                if (x !== null && y !== null && z !== null) {
+                    position = { x, y, z };
+                }
+                
+                const result = await agent.building_manager.buildStructure(name, position);
+                return result;
+            } catch (error) {
+                const errorMsg = `❌ Building failed: ${error.message}`;
+                agent.bot.chat(errorMsg);
+                return errorMsg;
+            }
+        }, false, -1)
     },
-        {
+    {
+        name: '!buildcancel',
+        description: 'Cancel the current building operation.',
+        perform: runAsAction(async function(agent) {
+            if (!agent.building_manager) {
+                return "❌ BuildingManager not initialized!";
+            }
+            
+            const result = agent.building_manager.cancelBuild();
+            agent.bot.chat("🛑 Building operation cancelled!");
+            return result;
+        }, false, -1)
+    },
+    {
+        name: '!buildstatus',
+        description: 'Show current building progress and status.',
+        perform: async function(agent) {
+            if (!agent.building_manager) {
+                return "❌ BuildingManager not initialized!";
+            }
+            
+            const status = agent.building_manager.getBuildStatus();
+            agent.bot.chat(status);
+            return status;
+        }
+    },
+    {
+        name: '!buildlist',
+        description: 'List all available schematics for building.',
+        perform: async function(agent) {
+            if (!agent.building_manager) {
+                return "❌ BuildingManager not initialized!";
+            }
+            
+            const byCategory = agent.building_manager.listSchematicsByCategory();
+            let message = "🏘️ Available Buildings:\n";
+            
+            for (const [category, schematics] of Object.entries(byCategory)) {
+                if (schematics.length > 0) {
+                    message += `📂 ${category.charAt(0).toUpperCase() + category.slice(1)} (${schematics.length}):\n`;
+                    for (const schematic of schematics) {
+                        message += `  - ${schematic.displayName}\n`;
+                    }
+                }
+            }
+            
+            agent.bot.chat(message);
+            return message;
+        }
+    },
+    {
+        name: '!buildinfo',
+        description: 'Show detailed information about a specific schematic.',
+        params: {
+            'name': { type: 'string', description: 'Schematic name to get info about' }
+        },
+        perform: async function(agent, name) {
+            if (!agent.building_manager) {
+                return "❌ BuildingManager not initialized!";
+            }
+            
+            const info = agent.building_manager.getSchematicInfo(name);
+            agent.bot.chat(info);
+            return info;
+        }
+    },
+    {
         name: '!placeHere',
         description: 'Place a given block in the current location. Do NOT use to build structures, only use for single blocks/torches.',
         params: {'type': { type: 'BlockOrItemName', description: 'The block type to place.' }},
@@ -396,7 +532,14 @@ export const actionsList = [
             let pos = agent.bot.entity.position;
             await skills.placeBlock(agent.bot, type, pos.x, pos.y, pos.z);
         })
-    },
+    }
+];
+
+// ============================================================================
+// COMBAT & ATTACK ACTIONS
+// ============================================================================
+
+const COMBAT_ACTIONS = [
     {
         name: '!attack',
         description: 'Attack and kill the nearest entity of a given type.',
@@ -417,111 +560,24 @@ export const actionsList = [
             }
             await skills.attackEntity(agent.bot, player, true);
         })
-    },
+    }
+];
+
+// ============================================================================
+// INTERACTION & UTILITY ACTIONS
+// ============================================================================
+
+const UTILITY_ACTIONS = [
     {
-        name: '!goToBed',
-        description: 'Go to the nearest bed and sleep.',
-        perform: runAsAction(async (agent) => {
-            await skills.goToBed(agent.bot);
+        name: '!useOn',
+        description: 'Use (right click) the given tool on the nearest target of the given type.',
+        params: {
+            'tool_name': { type: 'string', description: 'Name of the tool to use, or "hand" for no tool.' },
+            'target': { type: 'string', description: 'The target as an entity type, block type, or "nothing" for no target.' }
+        },
+        perform: runAsAction(async (agent, tool_name, target) => {
+            await skills.useToolOn(agent.bot, tool_name, target);
         })
-    },
-    {
-        name: '!stay',
-        description: 'Stay in the current location no matter what. Pauses all modes.',
-        params: {'type': { type: 'int', description: 'The number of seconds to stay. -1 for forever.', domain: [-1, Number.MAX_SAFE_INTEGER] }},
-        perform: runAsAction(async (agent, seconds) => {
-            await skills.stay(agent.bot, seconds);
-        })
-    },
-    {
-        name: '!setMode',
-        description: 'Set a mode to on or off. A mode is an automatic behavior that constantly checks and responds to the environment.',
-        params: {
-            'mode_name': { type: 'string', description: 'The name of the mode to enable.' },
-            'on': { type: 'boolean', description: 'Whether to enable or disable the mode.' }
-        },
-        perform: async function (agent, mode_name, on) {
-            const modes = agent.bot.modes;
-            if (!modes.exists(mode_name))
-            return `Mode ${mode_name} does not exist.` + modes.getDocs();
-            if (modes.isOn(mode_name) === on)
-            return `Mode ${mode_name} is already ${on ? 'on' : 'off'}.`;
-            modes.setOn(mode_name, on);
-            return `Mode ${mode_name} is now ${on ? 'on' : 'off'}.`;
-        }
-    },
-    {
-        name: '!goal',
-        description: 'Set a goal prompt to endlessly work towards with continuous self-prompting.',
-        params: {
-            'selfPrompt': { type: 'string', description: 'The goal prompt.' },
-        },
-        perform: async function (agent, prompt) {
-            if (convoManager.inConversation()) {
-                agent.self_prompter.setPromptPaused(prompt);
-            }
-            else {
-                agent.self_prompter.start(prompt);
-            }
-        }
-    },
-    {
-        name: '!endGoal',
-        description: 'Call when you have accomplished your goal. It will stop self-prompting and the current action. ',
-        perform: async function (agent) {
-            agent.self_prompter.stop();
-            return 'Self-prompting stopped.';
-        }
-    },
-    {
-        name: '!showVillagerTrades',
-        description: 'Show trades of a specified villager.',
-        params: {'id': { type: 'int', description: 'The id number of the villager that you want to trade with.' }},
-        perform: runAsAction(async (agent, id) => {
-            await skills.showVillagerTrades(agent.bot, id);
-        })
-    },
-    {
-        name: '!tradeWithVillager',
-        description: 'Trade with a specified villager.',
-        params: {
-            'id': { type: 'int', description: 'The id number of the villager that you want to trade with.' },
-            'index': { type: 'int', description: 'The index of the trade you want executed (1-indexed).', domain: [1, Number.MAX_SAFE_INTEGER] },
-            'count': { type: 'int', description: 'How many times that trade should be executed.', domain: [1, Number.MAX_SAFE_INTEGER] },
-        },
-        perform: runAsAction(async (agent, id, index, count) => {
-            await skills.tradeWithVillager(agent.bot, id, index, count);
-        })
-    },
-    {
-        name: '!startConversation',
-        description: 'Start a conversation with a bot. (FOR OTHER BOTS ONLY)',
-        params: {
-            'player_name': { type: 'string', description: 'The name of the player to send the message to.' },
-            'message': { type: 'string', description: 'The message to send.' },
-        },
-        perform: async function (agent, player_name, message) {
-            if (!convoManager.isOtherAgent(player_name))
-                return player_name + ' is not a bot, cannot start conversation.';
-            if (convoManager.inConversation() && !convoManager.inConversation(player_name)) 
-                convoManager.forceEndCurrentConversation();
-            else if (convoManager.inConversation(player_name))
-                agent.history.add('system', 'You are already in conversation with ' + player_name + '. Don\'t use this command to talk to them.');
-            convoManager.startConversation(player_name, message);
-        }
-    },
-    {
-        name: '!endConversation',
-        description: 'End the conversation with the given bot. (FOR OTHER BOTS ONLY)',
-        params: {
-            'player_name': { type: 'string', description: 'The name of the player to end the conversation with.' }
-        },
-        perform: async function (agent, player_name) {
-            if (!convoManager.inConversation(player_name))
-                return `Not in conversation with ${player_name}.`;
-            convoManager.endConversation(player_name);
-            return `Converstaion with ${player_name} ended.`;
-        }
     },
     {
         name: '!lookAtPlayer',
@@ -561,223 +617,256 @@ export const actionsList = [
             await agent.actions.runAction('action:lookAtPosition', actionFn);
             return result;
         }
-    },
+    }
+];
+
+// ============================================================================
+// VILLAGER TRADING ACTIONS
+// ============================================================================
+
+const TRADING_ACTIONS = [
     {
-        name: '!digDown',
-        description: 'Digs down a specified distance. Will stop if it reaches lava, water, or a fall of >=4 blocks below the bot.',
-        params: {'distance': { type: 'int', description: 'Distance to dig down', domain: [1, Number.MAX_SAFE_INTEGER] }},
-        perform: runAsAction(async (agent, distance) => {
-            await skills.digDown(agent.bot, distance)
+        name: '!showVillagerTrades',
+        description: 'Show trades of a specified villager.',
+        params: {'id': { type: 'int', description: 'The id number of the villager that you want to trade with.' }},
+        perform: runAsAction(async (agent, id) => {
+            await skills.showVillagerTrades(agent.bot, id);
         })
     },
     {
-        name: '!goToSurface',
-        description: 'Moves the bot to the highest block above it (usually the surface).',
-        params: {},
-        perform: runAsAction(async (agent) => {
-            await skills.goToSurface(agent.bot);
-        })
-    },
-    {
-        name: '!useOn',
-        description: 'Use (right click) the given tool on the nearest target of the given type.',
+        name: '!tradeWithVillager',
+        description: 'Trade with a specified villager.',
         params: {
-            'tool_name': { type: 'string', description: 'Name of the tool to use, or "hand" for no tool.' },
-            'target': { type: 'string', description: 'The target as an entity type, block type, or "nothing" for no target.' }
+            'id': { type: 'int', description: 'The id number of the villager that you want to trade with.' },
+            'index': { type: 'int', description: 'The index of the trade you want executed (1-indexed).', domain: [1, Number.MAX_SAFE_INTEGER] },
+            'count': { type: 'int', description: 'How many times that trade should be executed.', domain: [1, Number.MAX_SAFE_INTEGER] },
         },
-        perform: runAsAction(async (agent, tool_name, target) => {
-            await skills.useToolOn(agent.bot, tool_name, target);
+        perform: runAsAction(async (agent, id, index, count) => {
+            await skills.tradeWithVillager(agent.bot, id, index, count);
         })
-    },
-    // PHASE 1: Combat Mode Test Commands
+    }
+];
+
+// ============================================================================
+// MODE & BEHAVIOR CONTROL ACTIONS
+// ============================================================================
+
+const MODE_ACTIONS = [
     {
-        name: '!combatTest',
-        description: 'Manually activate combat mode for testing.',
-        params: {},
-        perform: async function(agent) {
-            const bot = agent.bot;
-            if (bot.modes && bot.modes.self_defense) {
-                bot.modes.self_defense.on = true;
-                bot.modes.self_defense.active = true;
-                bot.modes.self_defense.combatState = 'scanning';
-                agent.openChat('⚔️ Kampfmodus manuell aktiviert!');
-                return 'Combat mode activated manually.';
-            }
-            return 'Error: Combat mode not available.';
+        name: '!setMode',
+        description: 'Set a mode to on or off. A mode is an automatic behavior that constantly checks and responds to the environment.',
+        params: {
+            'mode_name': { type: 'string', description: 'The name of the mode to enable.' },
+            'on': { type: 'boolean', description: 'Whether to enable or disable the mode.' }
+        },
+        perform: async function (agent, mode_name, on) {
+            const modes = agent.bot.modes;
+            if (!modes.exists(mode_name))
+                return `Mode ${mode_name} does not exist.` + modes.getDocs();
+            if (modes.isOn(mode_name) === on)
+                return `Mode ${mode_name} is already ${on ? 'on' : 'off'}.`;
+            modes.setOn(mode_name, on);
+            return `Mode ${mode_name} is now ${on ? 'on' : 'off'}.`;
         }
     },
     {
-        name: '!combatStats',
-        description: 'Show current combat mode status and targets.',
-        params: {},
-        perform: async function(agent) {
+        name: '!goal',
+        description: 'Set a goal prompt to endlessly work towards with continuous self-prompting.',
+        params: {
+            'selfPrompt': { type: 'string', description: 'The goal prompt.' },
+        },
+        perform: async function (agent, prompt) {
+            if (convoManager.inConversation()) {
+                agent.self_prompter.setPromptPaused(prompt);
+            }
+            else {
+                agent.self_prompter.start(prompt);
+            }
+        }
+    },
+    {
+        name: '!endGoal',
+        description: 'Call when you have accomplished your goal. It will stop self-prompting and the current action. ',
+        perform: async function (agent) {
+            agent.self_prompter.stop();
+            return 'Self-prompting stopped.';
+        }
+    }
+];
+
+// ============================================================================
+// CONVERSATION ACTIONS (Bot-to-Bot Communication)
+// ============================================================================
+
+const CONVERSATION_ACTIONS = [
+    {
+        name: '!startConversation',
+        description: 'Start a conversation with a bot. (FOR OTHER BOTS ONLY)',
+        params: {
+            'player_name': { type: 'string', description: 'The name of the player to send the message to.' },
+            'message': { type: 'string', description: 'The message to send.' },
+        },
+        perform: async function (agent, player_name, message) {
+            if (!convoManager.isOtherAgent(player_name))
+                return player_name + ' is not a bot, cannot start conversation.';
+            if (convoManager.inConversation() && !convoManager.inConversation(player_name)) 
+                convoManager.forceEndCurrentConversation();
+            else if (convoManager.inConversation(player_name))
+                agent.history.add('system', 'You are already in conversation with ' + player_name + '. Don\'t use this command to talk to them.');
+            convoManager.startConversation(player_name, message);
+        }
+    },
+    {
+        name: '!endConversation',
+        description: 'End the conversation with the given bot. (FOR OTHER BOTS ONLY)',
+        params: {
+            'player_name': { type: 'string', description: 'The name of the player to end the conversation with.' }
+        },
+        perform: async function (agent, player_name) {
+            if (!convoManager.inConversation(player_name))
+                return `Not in conversation with ${player_name}.`;
+            convoManager.endConversation(player_name);
+            return `Converstaion with ${player_name} ended.`;
+        }
+    }
+];
+
+// ============================================================================
+// COMBAT DEBUG & TESTING ACTIONS
+// Only available when settings.debug_mode is enabled
+// ============================================================================
+
+const COMBAT_DEBUG_ACTIONS = [
+    createCombatAction('Test', 'Manually activate combat mode for testing.', 
+        async (agent, mode) => {
+            mode.on = true;
+            mode.active = true;
+            mode.combatState = 'scanning';
+            agent.openChat('⚔️ Kampfmodus manuell aktiviert!');
+            return 'Combat mode activated manually.';
+        }
+    ),
+    
+    createCombatAction('Stats', 'Show current combat mode status and targets.',
+        async (agent, mode) => {
             const bot = agent.bot;
-            if (bot.modes && bot.modes.self_defense) {
-                const mode = bot.modes.self_defense;
-                const status = `🛡️ Kampfstatus:
+            const status = `🛡️ Kampfstatus:
 • Aktiv: ${mode.active ? 'Ja' : 'Nein'}
 • Zustand: ${mode.combatState}
 • Ziele: ${mode.targets.length}/${mode.maxTargets}
 • Gesundheit: ${bot.health}/20
 • Flucht-Schwelle: ${mode.fleeThreshold}
 • Aktuelles Ziel: ${mode.currentTarget ? mode.currentTarget.name : 'Keins'}`;
-                agent.openChat(status);
-                return status;
-            }
-            return 'Combat mode not available.';
+            agent.openChat(status);
+            return status;
         }
-    },
-    {
-        name: '!combatReset',
-        description: 'Reset combat mode to idle state.',
-        params: {},
-        perform: async function(agent) {
+    ),
+    
+    createCombatAction('Reset', 'Reset combat mode to idle state.',
+        async (agent, mode) => {
             const bot = agent.bot;
-            if (bot.modes && bot.modes.self_defense) {
-                const mode = bot.modes.self_defense;
-                mode.on = false;
-                mode.active = false;
-                mode.targets = [];
-                mode.currentTarget = null;
-                mode.combatState = 'idle';
-                mode.fleeMessageSent = false;
-                bot.pvp.stop();
-                agent.openChat('🔄 Kampfmodus zurückgesetzt!');
-                return 'Combat mode reset.';
-            }
-            return 'Combat mode not available.';
+            mode.on = false;
+            mode.active = false;
+            mode.targets = [];
+            mode.currentTarget = null;
+            mode.combatState = 'idle';
+            mode.fleeMessageSent = false;
+            bot.pvp.stop();
+            agent.openChat('🔄 Kampfmodus zurückgesetzt!');
+            return 'Combat mode reset.';
         }
-    },
-    {
-        name: '!combatConfig',
-        description: 'Configure combat mode parameters.',
-        params: {
+    ),
+    
+    createCombatAction('Config', 'Configure combat mode parameters.',
+        async (agent, mode, parameter, value) => {
+            const validParams = ['fleeThreshold', 'creeperDistance', 'maxTargets', 'scanInterval', 'drawTime', 'rangedCooldown'];
+            
+            if (validParams.includes(parameter)) {
+                const oldValue = mode[parameter];
+                mode[parameter] = value;
+                const message = `⚙️ ${parameter}: ${oldValue} → ${value}`;
+                agent.openChat(message);
+                return message;
+            } else {
+                const message = `❌ Ungültiger Parameter. Verfügbar: ${validParams.join(', ')}`;
+                agent.openChat(message);
+                return message;
+            }
+        },
+        {
             'parameter': { type: 'string', description: 'Parameter name (fleeThreshold, creeperDistance, maxTargets, scanInterval)' },
             'value': { type: 'number', description: 'New parameter value' }
-        },
-        perform: async function(agent, parameter, value) {
-            const bot = agent.bot;
-            if (bot.modes && bot.modes.self_defense) {
-                const mode = bot.modes.self_defense;
-                const validParams = ['fleeThreshold', 'creeperDistance', 'maxTargets', 'scanInterval', 'drawTime', 'rangedCooldown'];
-                
-                if (validParams.includes(parameter)) {
-                    const oldValue = mode[parameter];
-                    mode[parameter] = value;
-                    const message = `⚙️ ${parameter}: ${oldValue} → ${value}`;
-                    agent.openChat(message);
-                    return message;
-                } else {
-                    const message = `❌ Ungültiger Parameter. Verfügbar: ${validParams.join(', ')}`;
-                    agent.openChat(message);
-                    return message;
-                }
-            }
-            return 'Combat mode not available.';
         }
-    },
-    {
-        name: '!combatDebug',
-        description: 'Toggle combat mode debug output.',
-        params: {},
-        perform: async function(agent) {
-            const bot = agent.bot;
-            if (bot.modes && bot.modes.self_defense) {
-                const mode = bot.modes.self_defense;
-                mode.debugMode = !mode.debugMode;
-                
-                // Reset Spam-Counter bei Debug-Änderung
-                mode.lastState = 'idle';
-                mode.lastTargetCount = 0;
-                mode.scanCounter = 0;
-                
-                const message = `🐛 Debug-Modus: ${mode.debugMode ? 'AN (inkl. Damage Events)' : 'AUS'}`;
-                agent.openChat(message);
-                return message;
-            }
-            return 'Combat mode not available.';
+    ),
+    
+    createCombatAction('Debug', 'Toggle combat mode debug output.',
+        async (agent, mode) => {
+            mode.debugMode = !mode.debugMode;
+            mode.lastState = 'idle';
+            mode.lastTargetCount = 0;
+            mode.scanCounter = 0;
+            
+            const message = `🐛 Debug-Modus: ${mode.debugMode ? 'AN (inkl. Damage Events)' : 'AUS'}`;
+            agent.openChat(message);
+            return message;
         }
-    },
-    {
-        name: '!combatForceActivate',
-        description: 'Force activate combat mode and scan immediately.',
-        params: {},
-        perform: async function(agent) {
-            const bot = agent.bot;
-            if (bot.modes && bot.modes.self_defense) {
-                const mode = bot.modes.self_defense;
-                mode.on = true;
-                mode.active = true;
-                mode.combatState = 'scanning';
-                mode.lastScan = 0; // Force immediate scan
-                agent.openChat('🔍 Kampfmodus forciert aktiviert! Sofortiger Scan...');
-                return 'Combat mode force activated with immediate scan.';
-            }
-            return 'Combat mode not available.';
+    ),
+    
+    createCombatAction('ForceActivate', 'Force activate combat mode and scan immediately.',
+        async (agent, mode) => {
+            mode.on = true;
+            mode.active = true;
+            mode.combatState = 'scanning';
+            mode.lastScan = 0;
+            agent.openChat('🔍 Kampfmodus forciert aktiviert! Sofortiger Scan...');
+            return 'Combat mode force activated with immediate scan.';
         }
-    },
-    // PHASE 2: Erweiterte Combat-Kommandos
-    {
-        name: '!combatEquip',
-        description: 'Force equip combat gear (weapons and shield).',
-        params: {},
-        perform: async function(agent) {
+    ),
+    
+    createCombatAction('Equip', 'Force equip combat gear (weapons and shield).',
+        async (agent, mode) => {
             const bot = agent.bot;
-            if (bot.modes && bot.modes.self_defense) {
-                const mode = bot.modes.self_defense;
-                await mode.equipForCombat(bot);
-                
-                const weapon = bot.heldItem?.name || 'keine';
-                const shield = mode.hasShieldEquipped(bot) ? 'ja' : 'nein';
-                const ranged = mode.hasRangedWeapon(bot)?.name || 'keine';
-                
-                const message = `⚔️ Ausrüstung: Waffe: ${weapon}, Schild: ${shield}, Fernkampf: ${ranged}`;
-                agent.openChat(message);
-                return message;
-            }
-            return 'Combat mode not available.';
+            await mode.equipForCombat(bot);
+            
+            const weapon = bot.heldItem?.name || 'keine';
+            const shield = mode.hasShieldEquipped(bot) ? 'ja' : 'nein';
+            const ranged = mode.hasRangedWeapon(bot)?.name || 'keine';
+            
+            const message = `⚔️ Ausrüstung: Waffe: ${weapon}, Schild: ${shield}, Fernkampf: ${ranged}`;
+            agent.openChat(message);
+            return message;
         }
-    },
-    {
-        name: '!combatTactics',
-        description: 'Show current combat tactics and capabilities.',
-        params: {},
-        perform: async function(agent) {
+    ),
+    
+    createCombatAction('Tactics', 'Show current combat tactics and capabilities.',
+        async (agent, mode) => {
             const bot = agent.bot;
-            if (bot.modes && bot.modes.self_defense) {
-                const mode = bot.modes.self_defense;
-                
-                const hasShield = mode.hasShieldEquipped(bot);
-                const rangedWeapon = mode.hasRangedWeapon(bot);
-                const weapon = bot.heldItem;
-                const cooldownLeft = Math.max(0, Math.ceil((mode.rangedCooldown - (Date.now() - mode.lastRangedAttack)) / 1000));
-                
-                const tactics = `🎯 Kampf-Taktiken:
+            const hasShield = mode.hasShieldEquipped(bot);
+            const rangedWeapon = mode.hasRangedWeapon(bot);
+            const weapon = bot.heldItem;
+            const cooldownLeft = Math.max(0, Math.ceil((mode.rangedCooldown - (Date.now() - mode.lastRangedAttack)) / 1000));
+            
+            const tactics = `🎯 Kampf-Taktiken:
 • Nahkampf: ${weapon ? weapon.name : 'Fäuste'}
 • Schild-Taktik: ${hasShield ? 'Verfügbar - Schutz vor Pfeilen' : 'Nicht verfügbar'}
 • Fernkampf: ${rangedWeapon ? rangedWeapon.name + ' - Creeper sicher angreifbar' : 'Nicht verfügbar'}
 • Fernkampf-Abklingzeit: ${cooldownLeft > 0 ? cooldownLeft + 's verbleibend' : 'Bereit'}
 • Creeper-Strategie: ${rangedWeapon ? 'Fernkampf bevorzugt' : 'Flucht bei Annäherung'}
 • Skeleton-Taktik: ${hasShield ? 'Schild-Approach' : 'Direkter Angriff'}`;
-                
-                agent.openChat(tactics);
-                return tactics;
-            }
-            return 'Combat mode not available.';
-        }
-    },
-    {
-        name: '!combatEvents',
-        description: 'Show recent damage events and health changes.',
-        params: {},
-        perform: async function(agent) {
-            const bot = agent.bot;
             
+            agent.openChat(tactics);
+            return tactics;
+        }
+    ),
+    
+    createCombatAction('Events', 'Show recent damage events and health changes.',
+        async (agent, mode) => {
+            const bot = agent.bot;
             const message = `📊 Damage Event Status:
 • Aktuelle Health: ${bot.health}/20 ❤️
 • Letzte Damage-Zeit: ${bot.lastDamageTime ? new Date(bot.lastDamageTime).toLocaleTimeString() : 'Nie'}
 • Letzter Schaden: ${bot.lastDamageTaken || 0} ❤️
-• Combat Active: ${bot.modes?.self_defense?.active ? '✅ JA' : '❌ NEIN'}
+• Combat Active: ${mode.active ? '✅ JA' : '❌ NEIN'}
 
 🏹 Event-Listener aktiv:
 • health ✅
@@ -788,92 +877,36 @@ export const actionsList = [
             agent.openChat(message);
             return message;
         }
-    },
-    {
-        name: '!combatAntiSpam',
-        description: 'Show and reset anti-spam cooldowns.',
-        params: {},
-        perform: async function(agent) {
-            const bot = agent.bot;
-            if (bot.modes && bot.modes.self_defense) {
-                const mode = bot.modes.self_defense;
-                const cooldownLeft = Math.max(0, Math.ceil((mode.rangedCooldown - (Date.now() - mode.lastRangedAttack)) / 1000));
-                
-                // Reset cooldown
-                mode.lastRangedAttack = 0;
-                
-                const message = `🛡️ Anti-Spam Status:
+    ),
+    
+    createCombatAction('AntiSpam', 'Show and reset anti-spam cooldowns.',
+        async (agent, mode) => {
+            const cooldownLeft = Math.max(0, Math.ceil((mode.rangedCooldown - (Date.now() - mode.lastRangedAttack)) / 1000));
+            mode.lastRangedAttack = 0;
+            
+            const message = `🛡️ Anti-Spam Status:
 • Fernkampf-Abklingzeit: ${mode.rangedCooldown/1000}s
 • War noch aktiv: ${cooldownLeft}s
 • Status: Zurückgesetzt ✅`;
-                
-                agent.openChat(message);
-                return message;
-            }
-            return 'Combat mode not available.';
+            
+            agent.openChat(message);
+            return message;
         }
-    },
-    {
-        name: '!combatVerbose',
-        description: 'Toggle verbose debug output (shows all states).',
-        params: {},
-        perform: async function(agent) {
-            const bot = agent.bot;
-            if (bot.modes && bot.modes.self_defense) {
-                const mode = bot.modes.self_defense;
-                mode.verboseDebug = !mode.verboseDebug;
-                
-                const message = `🔍 Verbose Debug: ${mode.verboseDebug ? 'AN (alle States)' : 'AUS (nur Änderungen)'}`;
-                agent.openChat(message);
-                return message;
-            }
-            return 'Combat mode not available.';
+    ),
+    
+    createCombatAction('Verbose', 'Toggle verbose debug output (shows all states).',
+        async (agent, mode) => {
+            mode.verboseDebug = !mode.verboseDebug;
+            const message = `🔍 Verbose Debug: ${mode.verboseDebug ? 'AN (alle States)' : 'AUS (nur Änderungen)'}`;
+            agent.openChat(message);
+            return message;
         }
-    },
-    {
-        name: '!combatReset',
-        description: 'Reset combat mode (clear targets, cooldowns, and states).',
-        params: {},
-        perform: async function(agent) {
+    ),
+    
+    createCombatAction('Mode', 'Show current combat mode (defensive vs aggressive).',
+        async (agent, mode) => {
             const bot = agent.bot;
-            if (bot.modes && bot.modes.self_defense) {
-                const mode = bot.modes.self_defense;
-                
-                // Reset alle Combat-States
-                mode.active = false;
-                mode.combatState = 'idle';
-                mode.targets = [];
-                mode.currentTarget = null;
-                mode.fleeMessageSent = false;
-                mode.lastScan = 0;
-                mode.lastRangedAttack = 0;
-                mode.lastChatMessage = 0;
-                mode.lastAttackMessage = '';
-                mode.lastState = 'idle';
-                mode.lastTargetCount = 0;
-                
-                const message = `🔄 Combat Mode vollständig zurückgesetzt!
-• Ziele: Geleert
-• States: Reset auf idle  
-• Cooldowns: Zurückgesetzt
-• Anti-Spam: Geleert`;
-                
-                agent.openChat(message);
-                return message;
-            }
-            return 'Combat mode not available.';
-        }
-    },
-    {
-        name: '!combatMode',
-        description: 'Show current combat mode (defensive vs aggressive).',
-        params: {},
-        perform: async function(agent) {
-            const bot = agent.bot;
-            if (bot.modes && bot.modes.self_defense) {
-                const mode = bot.modes.self_defense;
-                
-                const message = `🛡️ Combat Mode Status:
+            const message = `🛡️ Combat Mode Status:
 • Modus: DEFENSIV (aktiviert nur bei Schaden)
 • Aktiv: ${mode.active ? '✅ JA' : '❌ NEIN'}
 • Ziele: ${mode.targets.length}
@@ -882,75 +915,112 @@ export const actionsList = [
 
 💡 Der Bot kämpft NUR wenn er Schaden erhält!
 Er jagt keine Mobs proaktiv.`;
-                
-                agent.openChat(message);
-                return message;
-            }
-            return 'Combat mode not available.';
+            
+            agent.openChat(message);
+            return message;
         }
-    },
+    ),
+    
+    // Separate !combatTest and !combatTestArrow as they have different logic
     {
         name: '!combatTest',
         description: 'Simulate damage to test defensive combat activation.',
-        params: {},
         perform: async function(agent) {
             const bot = agent.bot;
-            if (bot.modes && bot.modes.self_defense) {
-                // Simuliere Schaden durch Health-Event
-                const currentHealth = bot.health;
-                bot.health = Math.max(1, currentHealth - 1);
-                bot.emit('health');
-                
-                // Health wieder zurücksetzen (Simulation)
-                setTimeout(() => {
-                    bot.health = currentHealth;
-                }, 1000);
-                
-                const message = `🧪 Schaden-Simulation durchgeführt!
+            if (!bot.modes?.self_defense) {
+                return 'Combat mode not available.';
+            }
+            
+            const currentHealth = bot.health;
+            bot.health = Math.max(1, currentHealth - 1);
+            bot.emit('health');
+            
+            setTimeout(() => {
+                bot.health = currentHealth;
+            }, 1000);
+            
+            const message = `🧪 Schaden-Simulation durchgeführt!
 • Simulierter Schaden: 1 ❤️
 • Combat Mode sollte jetzt aktiv sein
 • Prüfe mit !combatStats`;
-                
-                agent.openChat(message);
-                return message;
-            }
-            return 'Combat mode not available.';
+            
+            agent.openChat(message);
+            return message;
         }
     },
+    
     {
         name: '!combatTestArrow',
         description: 'Simulate projectile damage (safe version).',
-        params: {},
         perform: async function(agent) {
             const bot = agent.bot;
-            if (bot.modes && bot.modes.self_defense) {
-                // Sichere Simulation nur mit Health und EntityHurt
-                const currentHealth = bot.health;
-                
-                console.log(`[TEST] Safe projectile damage simulation...`);
-                
-                // 1. EntityHurt Event (sicher)
-                bot.emit('entityHurt', bot.entity);
-                
-                // 2. Health Change (bewährt)
-                bot.health = Math.max(1, currentHealth - 1);
-                bot.emit('health');
-                
-                // Health zurücksetzen
-                setTimeout(() => {
-                    bot.health = currentHealth;
-                }, 1000);
-                
-                const message = `🏹 Sichere Pfeil-Simulation:
+            if (!bot.modes?.self_defense) {
+                return 'Combat mode not available.';
+            }
+            
+            const currentHealth = bot.health;
+            
+            console.log(`[TEST] Safe projectile damage simulation...`);
+            
+            bot.emit('entityHurt', bot.entity);
+            bot.health = Math.max(1, currentHealth - 1);
+            bot.emit('health');
+            
+            setTimeout(() => {
+                bot.health = currentHealth;
+            }, 1000);
+            
+            const message = `🏹 Sichere Pfeil-Simulation:
 • EntityHurt Event ✅
 • Health Change (1 ❤️) ✅
 • Keine problematischen Packet-Events
 • Combat sollte aktiviert sein!`;
-                
-                agent.openChat(message);
-                return message;
-            }
-            return 'Combat mode not available.';
+            
+            agent.openChat(message);
+            return message;
         }
-    },
+    }
+];
+
+// ============================================================================
+// EXPORT ACTIONS LIST
+// Conditionally includes debug actions based on settings
+// ============================================================================
+
+export const actionsList = [
+    // Core system commands
+    ...CORE_ACTIONS,
+    
+    // Movement and navigation
+    ...MOVEMENT_ACTIONS,
+    
+    // Inventory management
+    ...INVENTORY_ACTIONS,
+    
+    // Storage interactions
+    ...STORAGE_ACTIONS,
+    
+    // Resource gathering and crafting
+    ...GATHERING_ACTIONS,
+    
+    // Building and construction
+    ...BUILDING_ACTIONS,
+    
+    // Combat actions
+    ...COMBAT_ACTIONS,
+    
+    // Utility and interaction
+    ...UTILITY_ACTIONS,
+    
+    // Villager trading
+    ...TRADING_ACTIONS,
+    
+    // Mode and behavior control
+    ...MODE_ACTIONS,
+    
+    // Bot-to-bot communication
+    ...CONVERSATION_ACTIONS,
+    
+    // Debug actions (only in debug mode)
+    ...(settings.debug_mode ? COMBAT_DEBUG_ACTIONS : [])
 ];
