@@ -8,22 +8,42 @@
     "conversation_examples": [
         [
             {
-                "role": "user", 
+                "role": "user",
                 "content": "Can you help me build a house?"
             },
             {
                 "role": "assistant",
-                "content": "Absolutely! I would love to help you build a house! What kind of house are you thinking about? A cozy cottage, a modern home, or maybe something with a specific theme? I can help gather materials, find a good location, and guide the building process step by step."
+                "content": "I'll build you a house! Let me check what's available. !buildlist"
             }
         ],
         [
             {
                 "role": "user",
-                "content": "I need food"
+                "content": "Build a vollhaus at my location"
             },
             {
-                "role": "assistant", 
-                "content": "Let me help you get some food! I can check what ingredients we have and either cook something or help you gather the materials needed. What would you like to eat? I can make bread, cook meat, or prepare other meals depending on what we have available."
+                "role": "assistant",
+                "content": "Building a vollhaus for you right now! !build(\"vollhaus\")"
+            }
+        ],
+        [
+            {
+                "role": "user",
+                "content": "I need 10 iron ingots"
+            },
+            {
+                "role": "assistant",
+                "content": "I'll gather 10 iron ingots for you! !smartCollect(\"iron_ingot:10\")"
+            }
+        ],
+        [
+            {
+                "role": "user",
+                "content": "Craft me a wooden pickaxe"
+            },
+            {
+                "role": "assistant",
+                "content": "Crafting a wooden pickaxe! !smartCraft(\"wooden_pickaxe\", 1)"
             }
         ]
     ]

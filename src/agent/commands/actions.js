@@ -348,19 +348,42 @@ const GATHERING_ACTIONS = [
             'strategy': { type: 'string', description: 'Collection strategy: "auto" (default), "chests_first", "crafting_only", "mining_only"' }
         },
         perform: runAsAction(async function(agent, items, strategy = 'auto') {
+            // Import smart crafting system
+            const { smartCollect } = await import('../library/smart_crafting.js');
+
             const itemRequests = items.split(',').map(item => {
                 const [name, count] = item.trim().split(':');
                 return { name: name.trim(), count: parseInt(count) || 1 };
             });
-            
+
             agent.bot.chat(`🤖 Starting smart collection: ${items} (strategy: ${strategy})`);
-            
+
             for (const request of itemRequests) {
                 agent.bot.chat(`🔍 Collecting ${request.count}x ${request.name}...`);
-                // Add actual smart collection implementation here
+
+                try {
+                    const success = await smartCollect(
+                        agent.bot,
+                        request.name,
+                        request.count,
+                        agent.actions, // skills object
+                        { strategy }
+                    );
+
+                    if (!success) {
+                        agent.bot.chat(`❌ Failed to collect ${request.name}`);
+                        return `Failed to collect ${request.name}`;
+                    }
+
+                    agent.bot.chat(`✅ Collected ${request.count}x ${request.name}`);
+                } catch (error) {
+                    console.error(`Error collecting ${request.name}:`, error);
+                    agent.bot.chat(`❌ Error: ${error.message}`);
+                    return `Error collecting ${request.name}: ${error.message}`;
+                }
             }
-            
-            return `Smart collection completed for: ${items}`;
+
+            return `✅ Smart collection completed for: ${items}`;
         }, false, -1)
     },
     {
@@ -383,8 +406,31 @@ const GATHERING_ACTIONS = [
             'auto_gather': { type: 'boolean', description: 'Automatically gather missing materials' }
         },
         perform: runAsAction(async function(agent, item, quantity = 1, auto_gather = true) {
-            agent.bot.chat(`🔨 Smart crafting ${quantity}x ${item} (auto-gather: ${auto_gather})`);
-            return `Smart crafting completed: ${quantity}x ${item}`;
+            // Import smart crafting system
+            const { smartCraft } = await import('../library/smart_crafting.js');
+
+            agent.bot.chat(`🔨 Smart crafting ${quantity}x ${item}${auto_gather ? ' (auto-gathering materials)' : ''}...`);
+
+            try {
+                const success = await smartCraft(
+                    agent.bot,
+                    item,
+                    quantity,
+                    agent.actions // skills
+                );
+
+                if (success) {
+                    agent.bot.chat(`✅ Successfully crafted ${quantity}x ${item}!`);
+                    return `✅ Crafted ${quantity}x ${item}!`;
+                } else {
+                    agent.bot.chat(`❌ Failed to craft ${item}`);
+                    return `❌ Failed to craft ${item}`;
+                }
+            } catch (error) {
+                console.error(`Error crafting ${item}:`, error);
+                agent.bot.chat(`❌ Crafting error: ${error.message}`);
+                return `Error: ${error.message}`;
+            }
         }, false, -1)
     },
     {
@@ -431,24 +477,42 @@ const GATHERING_ACTIONS = [
 const BUILDING_ACTIONS = [
     {
         name: '!build',
-        description: 'Advanced building system with schematic support. Builds structures from .schem files at optimal position near player.',
+        description: 'Build structure with automatic material management (Survival Mode). Checks inventory & chests, gathers missing materials automatically, handles interruptions.',
         params: {
-            'name': { type: 'string', description: 'Schematic name to build (e.g., "platte", "mischhaus", "vollhaus")' },
-            'x': { type: 'int', description: 'X position (optional, auto-calculated if not specified)' },
-            'y': { type: 'int', description: 'Y position (optional, auto-calculated if not specified)' },
-            'z': { type: 'int', description: 'Z position (optional, auto-calculated if not specified)' }
+            'name': { type: 'string', description: 'Schematic name (e.g., "platte", "mischhaus", "vollhaus")' }
         },
-        perform: runAsAction(async function(agent, name, x = null, y = null, z = null) {
+        perform: runAsAction(async function(agent, name) {
             if (!agent.building_manager) {
                 return "❌ BuildingManager not initialized!";
             }
-            
+
             try {
-                let position = null;
-                if (x !== null && y !== null && z !== null) {
-                    position = { x, y, z };
-                }
-                
+                // Use new survival mode build system
+                const result = await agent.building_manager.buildWithSurvivalMode(name, null);
+                return result;
+            } catch (error) {
+                const errorMsg = `❌ Building failed: ${error.message}`;
+                agent.bot.chat(errorMsg);
+                return errorMsg;
+            }
+        }, false, -1)
+    },
+    {
+        name: '!buildAt',
+        description: 'Build a structure at specific coordinates. For advanced users.',
+        params: {
+            'name': { type: 'string', description: 'Schematic name' },
+            'x': { type: 'int', description: 'X coordinate' },
+            'y': { type: 'int', description: 'Y coordinate' },
+            'z': { type: 'int', description: 'Z coordinate' }
+        },
+        perform: runAsAction(async function(agent, name, x, y, z) {
+            if (!agent.building_manager) {
+                return "❌ BuildingManager not initialized!";
+            }
+
+            try {
+                const position = { x, y, z };
                 const result = await agent.building_manager.buildStructure(name, position);
                 return result;
             } catch (error) {
@@ -518,10 +582,62 @@ const BUILDING_ACTIONS = [
             if (!agent.building_manager) {
                 return "❌ BuildingManager not initialized!";
             }
-            
+
             const info = agent.building_manager.getSchematicInfo(name);
             agent.bot.chat(info);
             return info;
+        }
+    },
+    {
+        name: '!buildmaterials',
+        description: 'Preview required materials for a build. Shows what you have, what\'s in chests, and what\'s missing.',
+        params: {
+            'name': { type: 'string', description: 'Schematic name to analyze' }
+        },
+        perform: runAsAction(async function(agent, name) {
+            if (!agent.building_manager) {
+                return "❌ BuildingManager not initialized!";
+            }
+
+            try {
+                const result = await agent.building_manager.previewMaterials(name);
+                return result;
+            } catch (error) {
+                const errorMsg = `❌ Material analysis failed: ${error.message}`;
+                agent.bot.chat(errorMsg);
+                return errorMsg;
+            }
+        }, false, -1)
+    },
+    {
+        name: '!buildresume',
+        description: 'Resume an interrupted build. Continues from where it left off, skips already placed blocks.',
+        perform: runAsAction(async function(agent) {
+            if (!agent.building_manager) {
+                return "❌ BuildingManager not initialized!";
+            }
+
+            try {
+                const result = await agent.building_manager.resumeBuild();
+                return result;
+            } catch (error) {
+                const errorMsg = `❌ Resume failed: ${error.message}`;
+                agent.bot.chat(errorMsg);
+                return errorMsg;
+            }
+        }, false, -1)
+    },
+    {
+        name: '!buildstate',
+        description: 'Show current build state, progress, and pause reason if any.',
+        perform: async function(agent) {
+            if (!agent.building_manager) {
+                return "❌ BuildingManager not initialized!";
+            }
+
+            const state = agent.building_manager.getBuildStateInfo();
+            agent.bot.chat(state);
+            return state;
         }
     },
     {

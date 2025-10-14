@@ -2,8 +2,8 @@ import { exec, spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { TTSConfig as gptTTSConfig } from '../models/gpt.js';
-import { TTSConfig as geminiTTSConfig } from '../models/gemini.js';
+import { TTSConfig as gptTTSConfig } from '../ai/gpt.js';
+import { TTSConfig as geminiTTSConfig } from '../ai/gemini.js';
 
 let speakingQueue = []; // each item: {text, model, audioData, ready}
 let isSpeaking = false;

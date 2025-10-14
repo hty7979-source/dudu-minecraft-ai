@@ -170,13 +170,7 @@ export class Coder {
         src = this.code_template.replace('/* CODE HERE */', src);
 
         let filename = this.file_counter + '.js';
-        // if (this.file_counter > 0) {
-        //     let prev_filename = this.fp + (this.file_counter-1) + '.js';
-        //     unlink(prev_filename, (err) => {
-        //         console.log("deleted file " + prev_filename);
-        //         if (err) console.error(err);
-        //     });
-        // } commented for now, useful to keep files for debugging
+        // Keep old code files for debugging purposes
         this.file_counter++;
         
         let write_result = await this._writeFilePromise('.' + this.fp + filename, src);

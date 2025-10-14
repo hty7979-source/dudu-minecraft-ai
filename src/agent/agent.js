@@ -1,7 +1,7 @@
 import { History } from './history.js';
 import { Coder } from './coder.js';
 import { VisionInterpreter } from './vision/vision_interpreter.js';
-import { Prompter } from '../models/prompter.js';
+import { Prompter } from '../ai/prompter.js';
 import { initModes } from './modes.js';
 import { initBot } from '../utils/mcdata.js';
 import { containsCommand, commandExists, executeCommand, truncCommandMessage, isAction, blacklistCommands } from './commands/index.js';
@@ -17,6 +17,7 @@ import settings from './settings.js';
 import { Task } from './tasks/tasks.js';
 import { speak } from './speak.js';
 import { BuildingManager } from './building_manager.js';
+import { TIMING, CONTEXT, BOT_BEHAVIOR, COMBAT, EXIT_CODES, TIME_OF_DAY } from '../config/constants.js';
 
 export class Agent {
     async start(load_mem=false, init_message=null, count_id=0) {
@@ -69,9 +70,9 @@ export class Agent {
         });
 
         const spawnTimeout = setTimeout(() => {
-            console.error('Bot has not spawned after 30 seconds. Exiting.');
-            process.exit(0);
-        }, 30000);
+            console.error(`Bot has not spawned after ${TIMING.SPAWN_TIMEOUT_MS / 1000} seconds. Exiting.`);
+            process.exit(EXIT_CODES.SUCCESS);
+        }, TIMING.SPAWN_TIMEOUT_MS);
         this.bot.once('spawn', async () => {
             try {
                 clearTimeout(spawnTimeout);
@@ -81,10 +82,11 @@ export class Agent {
                 
                 // Initialize BuildingManager with bot
                 this.building_manager.bot = this.bot;
+                this.building_manager.initializeComponents();
                 console.log('🏗️ BuildingManager initialized with bot');
 
-                // wait for a bit so stats are not undefined
-                await new Promise((resolve) => setTimeout(resolve, 1000));
+                // Wait for bot stats to be initialized
+                await new Promise((resolve) => setTimeout(resolve, TIMING.SPAWN_WAIT_MS));
                 
                 console.log(`${this.name} spawned.`);
                 this.clearBotLogs();
@@ -104,7 +106,7 @@ export class Agent {
                     }
                 }
 
-                await new Promise((resolve) => setTimeout(resolve, 10000));
+                await new Promise((resolve) => setTimeout(resolve, TIMING.PLAYER_CHECK_DELAY_MS));
                 this.checkAllPlayersPresent();
 
             } catch (error) {
@@ -159,9 +161,9 @@ export class Agent {
 
         // Set up auto-eat
         this.bot.autoEat.options = {
-            priority: 'foodPoints',
-            startAt: 14,
-            bannedFood: ["rotten_flesh", "spider_eye", "poisonous_potato", "pufferfish", "chicken"]
+            priority: BOT_BEHAVIOR.AUTO_EAT.PRIORITY,
+            startAt: BOT_BEHAVIOR.AUTO_EAT.START_AT,
+            bannedFood: BOT_BEHAVIOR.AUTO_EAT.BANNED_FOOD
         };
 
         if (save_data?.self_prompt) {
@@ -196,7 +198,7 @@ export class Agent {
         const missingPlayers = this.task.agent_names.filter(name => !this.bot.players[name]);
         if (missingPlayers.length > 0) {
             console.log(`Missing players/bots: ${missingPlayers.join(', ')}`);
-            this.cleanKill('Not all required players/bots are present in the world. Exiting.', 4);
+            this.cleanKill('Not all required players/bots are present in the world. Exiting.', EXIT_CODES.RESTART);
         }
     }
 
@@ -270,9 +272,8 @@ export class Agent {
         
         let behavior_log = this.bot.modes.flushBehaviorLog().trim();
         if (behavior_log.length > 0) {
-            const MAX_LOG = 500;
-            if (behavior_log.length > MAX_LOG) {
-                behavior_log = '...' + behavior_log.substring(behavior_log.length - MAX_LOG);
+            if (behavior_log.length > CONTEXT.MAX_BEHAVIOR_LOG_LENGTH) {
+                behavior_log = '...' + behavior_log.substring(behavior_log.length - CONTEXT.MAX_BEHAVIOR_LOG_LENGTH);
             }
             behavior_log = 'Recent behaviors log: \n' + behavior_log;
             await this.history.add('system', behavior_log);
@@ -399,16 +400,16 @@ export class Agent {
     }
 
     startEvents() {
-        // Custom events
+        // Custom time-based events
         this.bot.on('time', () => {
-            if (this.bot.time.timeOfDay == 0)
-            this.bot.emit('sunrise');
-            else if (this.bot.time.timeOfDay == 6000)
-            this.bot.emit('noon');
-            else if (this.bot.time.timeOfDay == 12000)
-            this.bot.emit('sunset');
-            else if (this.bot.time.timeOfDay == 18000)
-            this.bot.emit('midnight');
+            if (this.bot.time.timeOfDay == TIME_OF_DAY.SUNRISE)
+                this.bot.emit('sunrise');
+            else if (this.bot.time.timeOfDay == TIME_OF_DAY.NOON)
+                this.bot.emit('noon');
+            else if (this.bot.time.timeOfDay == TIME_OF_DAY.SUNSET)
+                this.bot.emit('sunset');
+            else if (this.bot.time.timeOfDay == TIME_OF_DAY.MIDNIGHT)
+                this.bot.emit('midnight');
         });
 
         let prev_health = this.bot.health;
@@ -437,13 +438,13 @@ export class Agent {
                 activateCombatOnDamage(this.bot.lastDamageTaken, 'Health');
             }
             
-            // PHASE 1: Health-Monitoring für Kampfmodus
+            // Health monitoring for combat mode
             if (this.bot.modes && this.bot.modes.self_defense) {
-                if (this.bot.health < 5 && this.bot.modes.self_defense.active) {
-                    // Kritischer Zustand wird bereits im Mode selbst behandelt
+                if (this.bot.health < COMBAT.CRITICAL_HEALTH && this.bot.modes.self_defense.active) {
+                    // Critical state is already handled in the mode itself
                 }
-                
-                if (this.bot.health > 15 && this.bot.modes.self_defense.fleeMessageSent) {
+
+                if (this.bot.health > COMBAT.SAFE_HEALTH && this.bot.modes.self_defense.fleeMessageSent) {
                     this.bot.modes.self_defense.fleeMessageSent = false;
                 }
             }
@@ -502,32 +503,31 @@ export class Agent {
         });
         this.bot.on('idle', () => {
             this.bot.clearControlStates();
-            this.bot.pathfinder.stop(); // clear any lingering pathfinder
+            this.bot.pathfinder.stop(); // Clear any lingering pathfinder
             this.bot.modes.unPauseAll();
             setTimeout(() => {
                 if (this.isIdle()) {
                     this.actions.resumeAction();
                 }
-            }, 1000);
+            }, TIMING.IDLE_RESUME_DELAY_MS);
         });
 
         // Init NPC controller
         this.npc.init();
 
-        // This update loop ensures that each update() is called one at a time, even if it takes longer than the interval
-        const INTERVAL = 300;
+        // Main update loop - ensures each update() completes before the next one starts
         let last = Date.now();
         setTimeout(async () => {
             while (true) {
                 let start = Date.now();
                 await this.update(start - last);
-                let remaining = INTERVAL - (Date.now() - start);
+                let remaining = TIMING.UPDATE_INTERVAL_MS - (Date.now() - start);
                 if (remaining > 0) {
                     await new Promise((resolve) => setTimeout(resolve, remaining));
                 }
                 last = start;
             }
-        }, INTERVAL);
+        }, TIMING.UPDATE_INTERVAL_MS);
 
         this.bot.emit('idle');
     }
@@ -543,9 +543,9 @@ export class Agent {
     }
     
 
-    cleanKill(msg='Killing agent process...', code=1) {
+    cleanKill(msg='Killing agent process...', code=EXIT_CODES.ERROR) {
         this.history.add('system', msg);
-        this.bot.chat(code > 1 ? 'Restarting.': 'Exiting.');
+        this.bot.chat(code > EXIT_CODES.ERROR ? 'Restarting.' : 'Exiting.');
         this.history.save();
         process.exit(code);
     }

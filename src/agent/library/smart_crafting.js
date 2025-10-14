@@ -5,6 +5,7 @@
 
 import * as mc from "../../utils/mcdata.js";
 import * as world from "./world.js";
+import * as skills from "./skills.js";
 import Vec3 from 'vec3';
 import pf from 'mineflayer-pathfinder';
 
@@ -63,7 +64,7 @@ class ToolManager {
 
   async equipBestTool(blockType) {
     const bestTool = this.getBestToolForBlock(blockType);
-    
+
     if (bestTool === 'hand') {
       await this.bot.unequip('hand');
       return true;
@@ -71,17 +72,22 @@ class ToolManager {
 
     try {
       const toolItem = this.bot.inventory.findInventoryItem(mc.getItemId(bestTool));
-      if (toolItem) {
-        await this.bot.equip(toolItem, 'hand');
-        console.log(`🔧 Equipped ${bestTool} for ${blockType}`);
-        return true;
+
+      if (!toolItem) {
+        console.log(`⚠️ Tool ${bestTool} not in inventory`);
+        await this.bot.unequip('hand');
+        return false;
       }
+
+      // Only equip if toolItem exists (null-check for Mineflayer API compliance)
+      await this.bot.equip(toolItem, 'hand');
+      console.log(`🔧 Equipped ${bestTool} for ${blockType}`);
+      return true;
     } catch (error) {
       console.log(`⚠️ Failed to equip ${bestTool}: ${error.message}`);
+      await this.bot.unequip('hand');
+      return false;
     }
-
-    await this.bot.unequip('hand');
-    return false;
   }
 
   canMineBlock(blockType) {
@@ -176,55 +182,69 @@ class StorageManager {
 
   async readChestContents(position) {
     const distance = this.bot.entity.position.distanceTo(position);
-    
+
     if (distance > 4) {
       const goal = new pf.goals.GoalNear(position.x, position.y, position.z, 1);
       await this.bot.pathfinder.goto(goal);
     }
-    
+
     const chestBlock = this.bot.blockAt(position);
-    const chest = await this.bot.openContainer(chestBlock);
-    
+    if (!chestBlock || chestBlock.name !== 'chest') {
+      throw new Error('Not a chest block');
+    }
+
+    // Use openChest for chest blocks (Mineflayer API)
+    const chest = await this.bot.openChest(chestBlock);
+
     const contents = {};
-    for (const item of chest.containerItems()) {
+    const items = chest.containerItems();
+
+    for (const item of items) {
       if (item) {
-        contents[item.name] = (contents[item.name] || 0) + item.count;
+        // Use item.name from Mineflayer Item object
+        const itemName = item.name;
+        contents[itemName] = (contents[itemName] || 0) + item.count;
       }
     }
-    
-    await chest.close();
+
+    chest.close();
     return contents;
   }
 
   async extractFromChest(position, itemName, quantity) {
     console.log(`📦 Extracting ${quantity}x ${itemName} from chest`);
-    
+
     const distance = this.bot.entity.position.distanceTo(position);
     if (distance > 4) {
       const goal = new pf.goals.GoalNear(position.x, position.y, position.z, 1);
       await this.bot.pathfinder.goto(goal);
     }
-    
+
     const chestBlock = this.bot.blockAt(position);
-    const chest = await this.bot.openContainer(chestBlock);
-    
+    if (!chestBlock || chestBlock.name !== 'chest') {
+      throw new Error('Not a chest block');
+    }
+
+    // Use openChest for chest blocks (Mineflayer API)
+    const chest = await this.bot.openChest(chestBlock);
+
     const matchingItems = chest.containerItems().filter(item => item.name === itemName);
     let extracted = 0;
     let remaining = quantity;
-    
+
     for (const item of matchingItems) {
       if (remaining <= 0) break;
-      
+
       const toTake = Math.min(remaining, item.count);
       await chest.withdraw(item.type, null, toTake);
-      
+
       extracted += toTake;
       remaining -= toTake;
     }
-    
-    await chest.close();
+
+    chest.close();
     console.log(`✅ Extracted ${extracted}x ${itemName}`);
-    
+
     return extracted;
   }
 
@@ -234,44 +254,49 @@ class StorageManager {
       maxDistance: 32,
       count: 5
     });
-    
+
     if (nearbyChests.length === 0) {
       return false;
     }
-    
+
     const inventoryItems = this.bot.inventory.items().filter(item => item.name === itemName);
     let stored = 0;
     let remaining = quantity;
-    
+
     for (const chestPos of nearbyChests) {
       if (remaining <= 0) break;
-      
+
       try {
         const distance = this.bot.entity.position.distanceTo(chestPos);
         if (distance > 4) {
           const goal = new pf.goals.GoalNear(chestPos.x, chestPos.y, chestPos.z, 1);
           await this.bot.pathfinder.goto(goal);
         }
-        
+
         const chestBlock = this.bot.blockAt(chestPos);
-        const chest = await this.bot.openContainer(chestBlock);
-        
+        if (!chestBlock || chestBlock.name !== 'chest') {
+          continue; // Skip if not a valid chest
+        }
+
+        // Use openChest for chest blocks (Mineflayer API)
+        const chest = await this.bot.openChest(chestBlock);
+
         for (const item of inventoryItems) {
           if (remaining <= 0) break;
-          
+
           const toStore = Math.min(item.count, remaining);
           await chest.deposit(item.type, null, toStore);
-          
+
           stored += toStore;
           remaining -= toStore;
         }
-        
-        await chest.close();
+
+        chest.close();
       } catch (error) {
         console.log(`⚠️ Could not store in chest: ${error.message}`);
       }
     }
-    
+
     return stored > 0;
   }
 }
@@ -318,14 +343,20 @@ class InventoryManager {
     }
     
     const chestBlock = this.bot.blockAt(nearestChest);
-    const chest = await this.bot.openContainer(chestBlock);
-    
+    if (!chestBlock || chestBlock.name !== 'chest') {
+      console.log('❌ No valid chest found');
+      return false;
+    }
+
+    // Use openChest for chest blocks (Mineflayer API)
+    const chest = await this.bot.openChest(chestBlock);
+
     const itemsToStore = this.selectItemsToStore(slotsNeeded);
     let stored = 0;
-    
+
     for (const item of itemsToStore) {
       if (stored >= slotsNeeded) break;
-      
+
       try {
         await chest.deposit(item.type, null, item.count);
         console.log(`📤 Stored ${item.count}x ${item.name}`);
@@ -334,8 +365,8 @@ class InventoryManager {
         console.log(`⚠️ Could not store ${item.name}: ${error.message}`);
       }
     }
-    
-    await chest.close();
+
+    chest.close();
     
     const newFreeSlots = this.getFreeSlots();
     console.log(`✅ Inventory management complete: ${newFreeSlots} free slots`);
@@ -557,17 +588,22 @@ class ResourceGatherer {
       console.log(`❌ Cannot mine ${blockType} with available tools`);
       return false;
     }
-    
+
     await this.toolManager.equipBestTool(blockType);
-    
+
     const startCount = this.bot.inventory.count(mc.getItemId(blockType));
-    
-    // Use existing skills system
-    const success = await this.bot.collectBlock(blockType, quantity);
-    
+
+    // Use skills.collectBlock (Mineflayer API compliant)
+    try {
+      await skills.collectBlock(this.bot, blockType, quantity);
+    } catch (error) {
+      console.log(`❌ Mining failed: ${error.message}`);
+      return false;
+    }
+
     const endCount = this.bot.inventory.count(mc.getItemId(blockType));
     const collected = endCount - startCount;
-    
+
     console.log(`📦 Collected ${collected}/${quantity} ${blockType}`);
     return collected >= quantity;
   }
@@ -585,43 +621,33 @@ class CraftingExecutor {
 
   async craft(itemName, quantity) {
     console.log(`🔨 Crafting ${quantity}x ${itemName}`);
-    
+
     const analysis = this.materialAnalyzer.analyzeRecipe(itemName, quantity);
-    
+
     if (!analysis.success) {
       console.log(`❌ Missing materials:`, analysis.missing);
       return false;
     }
-    
+
     // Ensure inventory space
     const slotsNeeded = Math.ceil(quantity / 64);
     const hasSpace = await this.inventoryManager.ensureSpace(slotsNeeded + 2);
-    
+
     if (!hasSpace) {
       console.log(`❌ Insufficient inventory space`);
       return false;
     }
-    
-    // Execute crafting in batches
-    let crafted = 0;
-    const batchSize = Math.min(quantity, 4);
-    
-    while (crafted < quantity) {
-      const toCraft = Math.min(batchSize, quantity - crafted);
-      
-      try {
-        await this.bot.craftRecipe(itemName, toCraft);
-        crafted += toCraft;
-        console.log(`✅ Crafted ${crafted}/${quantity} ${itemName}`);
-        
-        await new Promise(resolve => setTimeout(resolve, 500));
-      } catch (error) {
-        console.log(`⚠️ Crafting error: ${error.message}`);
-        break;
-      }
+
+    // Use skills.craftRecipe (Mineflayer API compliant)
+    // This handles both Creative and Survival modes correctly
+    try {
+      await skills.craftRecipe(this.bot, itemName, quantity);
+      console.log(`✅ Crafted ${quantity}x ${itemName}`);
+      return true;
+    } catch (error) {
+      console.log(`⚠️ Crafting error: ${error.message}`);
+      return false;
     }
-    
-    return crafted >= quantity;
   }
 }
 

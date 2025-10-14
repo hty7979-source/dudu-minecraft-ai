@@ -29,6 +29,10 @@ export function blacklistCommands(commands) {
 const commandRegex = /!(\w+)(?:\(((?:-?\d+(?:\.\d+)?|true|false|"[^"]*")(?:\s*,\s*(?:-?\d+(?:\.\d+)?|true|false|"[^"]*"))*)\))?/
 const argRegex = /-?\d+(?:\.\d+)?|true|false|"[^"]*"/g;
 
+// Fallback regex for simple space-separated arguments (for player commands)
+const simpleCommandRegex = /!(\w+)\s+(.+)/;
+const simpleArgRegex = /\S+/g;
+
 export function containsCommand(message) {
     const commandMatch = message.match(commandRegex);
     if (commandMatch)
@@ -95,21 +99,39 @@ function checkInInterval(number, lowerBound, upperBound, endpointType) {
  * @returns {string | Object}
  */
 export function parseCommandMessage(message) {
-    const commandMatch = message.match(commandRegex);
-    if (!commandMatch) return `Command is incorrectly formatted`;
+    let commandMatch = message.match(commandRegex);
+    let commandName, args;
+    let isSimpleFormat = false;
 
-    const commandName = "!"+commandMatch[1];
+    // Try primary format first (with parentheses)
+    if (commandMatch && commandMatch[2]) {
+        // Format: !command("arg1", "arg2")
+        commandName = "!" + commandMatch[1];
+        args = commandMatch[2].match(argRegex) || [];
+    } else {
+        // Try fallback format (space-separated)
+        const simpleMatch = message.match(simpleCommandRegex);
 
-    let args;
-    if (commandMatch[2]) args = commandMatch[2].match(argRegex);
-    else args = [];
+        if (simpleMatch) {
+            // Format: !command arg1 arg2 arg3
+            commandName = "!" + simpleMatch[1];
+            args = simpleMatch[2].match(simpleArgRegex) || [];
+            isSimpleFormat = true;
+        } else if (commandMatch) {
+            // Command without arguments: !command
+            commandName = "!" + commandMatch[1];
+            args = [];
+        } else {
+            return `Command is incorrectly formatted`;
+        }
+    }
 
     const command = getCommand(commandName);
     if(!command) return `${commandName} is not a command.`
 
     const params = commandParams(command);
     const paramNames = commandParamNames(command);
-    
+
     if (args.length !== params.length)
         return `Command ${command.name} was given ${args.length} args, but requires ${params.length} args.`;
 
@@ -240,33 +262,44 @@ export function getCommandDocs(agent) {
         'BlockOrItemName':   'string',
         'boolean':           'bool'
     }
-    let docs = `\n*DUDU COMMAND DOCS - Your AI Gaming Companion 🤖\n
-You are Dudu, an intelligent AI companion for Minecraft! Use these commands to help players with gaming tasks.
+    let docs = `
+*COMMAND DOCS - Available Actions 🤖
 
-✨ ENHANCED FEATURES:
-- Smart Collection (!smartCollect) - Intelligent multi-source gathering with inventory management
-- Smart Crafting (!smartCraft) - Advanced crafting with auto-material gathering and optimization  
-- Advanced Building (!build) - Natural language building with schematic support and auto-materials
+⚠️ CRITICAL: COMMAND FORMAT
+Commands MUST use parentheses and quotes for string arguments:
+✅ CORRECT: !build("vollhaus")
+✅ CORRECT: !smartCraft("wooden_pickaxe", 1)
+✅ CORRECT: !smartCollect("iron_ingot:10")
+✅ CORRECT: !buildAt("platte", 100, 70, 200)
+❌ WRONG: !build vollhaus (missing parentheses and quotes)
+❌ WRONG: !build vollhaus 10 20 30 (space-separated args)
 
-🎯 COMMAND SYNTAX:
-Use: !commandName or !commandName("arg1", 1.2, ...) for commands with parameters.
-- Use double quotes for strings
-- One command per response only
-- No codeblocks, trailing commands, or comments
-- Be helpful and gaming-focused in your responses
+FORMAT RULES:
+- Strings need "double quotes": "vollhaus", "iron_ingot:10"
+- Numbers without quotes: 1, 10, 20.5, true, false
+- Args separated by ", " (comma + space)
+- Parentheses () required when args present
+- Commands without args: !buildlist (no parentheses needed)
 
-🚀 PRIORITY SYSTEMS: Use !smartCollect, !smartCraft, !build instead of old commands for better performance!\n`;
+✨ PRIORITY COMMANDS (Use these first!):
+- !build("name") - Build structures with smart positioning
+- !buildAt("name", x, y, z) - Build at specific coordinates
+- !smartCraft("item", count) - Intelligent crafting with auto-gathering
+- !smartCollect("item:count") - Smart collection with optimal tools
+
+📋 AVAILABLE COMMANDS:\n`;
+
     for (let command of commandList) {
         if (agent.blocked_actions.includes(command.name)) {
             continue;
         }
-        docs += command.name + ': ' + command.description + '\n';
+        docs += '\n' + command.name + ': ' + command.description + '\n';
         if (command.params) {
             docs += 'Params:\n';
             for (let param in command.params) {
-                docs += `${param}: (${typeTranslations[command.params[param].type]??command.params[param].type}) ${command.params[param].description}\n`;
+                docs += `  ${param}: (${typeTranslations[command.params[param].type]??command.params[param].type}) ${command.params[param].description}\n`;
             }
         }
     }
-    return docs + '*\n';
+    return docs + '\n*\n';
 }
