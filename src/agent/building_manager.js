@@ -416,6 +416,7 @@ class BlockPlacer {
     this.bot = bot;
     this.orientationHandler = orientationHandler;
     this.specialBlocks = this.initializeSpecialBlocks();
+    this.maxPlacementDistance = 4.5; // Maximum reach distance for block placement
   }
 
   initializeSpecialBlocks() {
@@ -445,6 +446,26 @@ class BlockPlacer {
       console.log(`✅ Block ${blockName} already placed`);
       return true;
     }
+
+    // ========== NEW: Line of Sight Check ==========
+    // Check if bot can see the target position
+    if (!this.hasLineOfSight(pos)) {
+      console.log(`👁️ No line of sight to ${pos}, moving to better position...`);
+
+      const moved = await this.moveToPlacementPosition(pos);
+
+      if (!moved) {
+        console.log(`⚠️ Could not find position with line of sight for ${baseBlockName}`);
+        // Try anyway - might still work
+      }
+
+      // Re-check after moving
+      if (!this.hasLineOfSight(pos)) {
+        console.log(`⚠️ Still no line of sight after moving for ${baseBlockName}`);
+        // Continue anyway - placement might still work depending on terrain
+      }
+    }
+    // ==============================================
 
     // Handle block orientation BEFORE placement
     if (properties.facing && this.orientationHandler.needsOrientation(baseBlockName)) {
@@ -536,6 +557,131 @@ class BlockPlacer {
       }
     }
     return null;
+  }
+
+  /**
+   * Check if bot has line of sight to target position
+   * @param {Vec3} targetPos - Target block position
+   * @returns {boolean} True if clear line of sight exists
+   */
+  hasLineOfSight(targetPos) {
+    const start = this.bot.entity.position.offset(0, this.bot.entity.height * 0.5, 0); // Eye level
+    const end = new Vec3(targetPos.x + 0.5, targetPos.y + 0.5, targetPos.z + 0.5); // Center of target block
+
+    // Check distance first
+    const distance = start.distanceTo(end);
+    if (distance > this.maxPlacementDistance) {
+      return false;
+    }
+
+    // Raycast from bot to target
+    const direction = end.minus(start).normalize();
+    const raycastResult = this.bot.world.raycast(start, direction, distance);
+
+    // If raycast hits something before target, no line of sight
+    if (raycastResult) {
+      const hitPos = raycastResult.position;
+      // Check if we hit the target block (allow small margin for floating point errors)
+      if (hitPos.distanceTo(targetPos) < 0.5) {
+        return true; // Hit the target block itself
+      }
+      return false; // Hit something else
+    }
+
+    return true; // Nothing blocking
+  }
+
+  /**
+   * Find best position for bot to place a block
+   * @param {Vec3} targetPos - Target block position
+   * @returns {Vec3|null} Best position to place from, or null if none found
+   */
+  findBestPlacementPosition(targetPos) {
+    const positions = [];
+
+    // Try 8 cardinal and diagonal directions around the target
+    const directions = [
+      { x: 0, z: 2 },   // North
+      { x: 0, z: -2 },  // South
+      { x: 2, z: 0 },   // East
+      { x: -2, z: 0 },  // West
+      { x: 2, z: 2 },   // NE
+      { x: -2, z: 2 },  // NW
+      { x: 2, z: -2 },  // SE
+      { x: -2, z: -2 }  // SW
+    ];
+
+    for (const dir of directions) {
+      // Try different distances (2-4 blocks away)
+      for (let dist = 2; dist <= 4; dist++) {
+        const testPos = new Vec3(
+          Math.floor(targetPos.x + dir.x * (dist / 2)),
+          Math.floor(targetPos.y), // Same Y level first
+          Math.floor(targetPos.z + dir.z * (dist / 2))
+        );
+
+        // Check if position is valid (not inside blocks, not too far, etc.)
+        const blockAtPos = this.bot.blockAt(testPos);
+        const blockAbove = this.bot.blockAt(testPos.offset(0, 1, 0));
+
+        if (blockAtPos && blockAbove &&
+            blockAtPos.name === 'air' &&
+            blockAbove.name === 'air') {
+
+          // Check if we can reach target from this position
+          const distance = testPos.distanceTo(targetPos);
+          if (distance <= this.maxPlacementDistance) {
+            positions.push({
+              pos: testPos,
+              distance: distance,
+              priority: dist // Prefer closer positions
+            });
+          }
+        }
+      }
+    }
+
+    // Sort by priority (distance from target)
+    positions.sort((a, b) => a.priority - b.priority);
+
+    // Return best position or null
+    return positions.length > 0 ? positions[0].pos : null;
+  }
+
+  /**
+   * Move bot to a better position for placing a block
+   * @param {Vec3} targetPos - Target block position
+   * @returns {Promise<boolean>} True if successfully moved to good position
+   */
+  async moveToPlacementPosition(targetPos) {
+    const bestPos = this.findBestPlacementPosition(targetPos);
+
+    if (!bestPos) {
+      console.log(`⚠️ Could not find placement position for ${targetPos}`);
+      return false;
+    }
+
+    const currentDistance = this.bot.entity.position.distanceTo(bestPos);
+
+    // If already close enough, don't move
+    if (currentDistance < 1.5) {
+      return true;
+    }
+
+    console.log(`🚶 Moving to placement position: ${bestPos.x}, ${bestPos.y}, ${bestPos.z}`);
+
+    try {
+      const goal = new pathfinder.goals.GoalNear(bestPos.x, bestPos.y, bestPos.z, 1);
+      await this.bot.pathfinder.goto(goal);
+
+      // Wait for bot to stabilize
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      return true;
+    } catch (error) {
+      console.log(`⚠️ Could not move to placement position: ${error.message}`);
+      return false;
+    }
   }
 }
 
@@ -685,6 +831,76 @@ class BuildExecutor {
 }
 
 // ============================================================================
+// MATERIAL CLASSIFIER - Intelligently categorizes materials for gathering
+// ============================================================================
+class MaterialClassifier {
+  constructor() {
+    // Materials that can be mined/collected directly from the world
+    this.baseMaterials = new Set([
+      'stone', 'cobblestone', 'granite', 'diorite', 'andesite',
+      'dirt', 'grass_block', 'sand', 'gravel', 'clay',
+      'oak_log', 'spruce_log', 'birch_log', 'jungle_log', 'acacia_log', 'dark_oak_log',
+      'oak_leaves', 'spruce_leaves', 'birch_leaves',
+      'iron_ore', 'coal_ore', 'gold_ore', 'diamond_ore', 'emerald_ore',
+      'redstone_ore', 'lapis_ore', 'copper_ore',
+      'iron_ingot', 'gold_ingot', 'diamond', 'emerald', 'coal', 'redstone', 'lapis_lazuli',
+      'glass', 'obsidian', 'netherrack', 'soul_sand', 'glowstone',
+      'wool', 'white_wool', 'red_wool', 'blue_wool', // Can be obtained from sheep
+      'leather', 'feather', 'bone', // Mob drops (but collectible)
+    ]);
+
+    // Materials that require crafting but are easy (no special tools needed)
+    this.simpleCrafts = new Set([
+      'oak_planks', 'spruce_planks', 'birch_planks', 'jungle_planks', 'acacia_planks', 'dark_oak_planks',
+      'stick', 'torch', 'crafting_table',
+      'chest', 'barrel', 'ladder',
+      'wooden_pickaxe', 'wooden_axe', 'wooden_shovel',
+      'stone_pickaxe', 'stone_axe', 'stone_shovel',
+    ]);
+
+    // Materials that are difficult to obtain automatically (mob drops, rare items)
+    this.difficultMaterials = new Set([
+      'string', 'slime_ball', 'ender_pearl', 'blaze_rod', 'ghast_tear',
+      'gunpowder', 'spider_eye', 'rotten_flesh',
+      'dragon_egg', 'elytra', 'shulker_shell',
+      'nether_star', 'heart_of_the_sea',
+    ]);
+  }
+
+  /**
+   * Classify a material into a category
+   * @returns {'base'|'simple_craft'|'complex_craft'|'difficult'}
+   */
+  classify(materialName) {
+    if (this.baseMaterials.has(materialName)) {
+      return 'base';
+    }
+    if (this.simpleCrafts.has(materialName)) {
+      return 'simple_craft';
+    }
+    if (this.difficultMaterials.has(materialName)) {
+      return 'difficult';
+    }
+    return 'complex_craft'; // Default: needs crafting
+  }
+
+  /**
+   * Check if material should use smartCollect instead of basic collect
+   */
+  shouldUseSmartCollect(materialName) {
+    const category = this.classify(materialName);
+    return category === 'base' || category === 'simple_craft';
+  }
+
+  /**
+   * Check if material is likely a mob drop or rare item
+   */
+  isDifficult(materialName) {
+    return this.classify(materialName) === 'difficult';
+  }
+}
+
+// ============================================================================
 // SURVIVAL BUILD COORDINATOR - Manages material gathering and build state
 // ============================================================================
 class SurvivalBuildCoordinator {
@@ -696,6 +912,8 @@ class SurvivalBuildCoordinator {
     this.agent = agent;
     this.buildState = null;
     this.smartCraftingManager = null;
+    this.materialClassifier = new MaterialClassifier();
+    this.gatheringRetries = {}; // Track retry attempts per material
   }
 
   /**
@@ -880,11 +1098,251 @@ class SurvivalBuildCoordinator {
   }
 
   /**
+   * Clean inventory - keep only tools, food, and weapons
+   */
+  async cleanInventory() {
+    const keepTypes = ['sword', 'axe', 'pickaxe', 'shovel', 'hoe', 'shears', 'food', 'arrow', 'bow', 'shield'];
+
+    const toStore = [];
+    for (const item of this.bot.inventory.items()) {
+      const shouldKeep = keepTypes.some(type =>
+        item.name.includes(type) ||
+        item.name === 'cooked' ||
+        item.name === 'bread' ||
+        item.name === 'steak'
+      );
+
+      if (!shouldKeep) {
+        toStore.push(item);
+      }
+    }
+
+    if (toStore.length > 0) {
+      this.bot.chat(`🧹 Räume Inventar auf (${toStore.length} Items)...`);
+
+      // Find nearest chest
+      const chestPositions = this.bot.findBlocks({
+        matching: (block) => block && block.name === 'chest',
+        maxDistance: 32,
+        count: 1
+      });
+
+      if (chestPositions.length > 0) {
+        await this.smartCraftingManager.storageManager.storeInChest(toStore);
+        this.bot.chat('✅ Inventar aufgeräumt!');
+      }
+    }
+  }
+
+  /**
+   * Procure missing materials with retry logic and smart collection (NEW IMPROVED VERSION)
+   * Features:
+   * - Withdraws from chests FIRST
+   * - Uses smartCollect for base materials (stone, wood, iron, etc.)
+   * - Retry logic: 3 attempts per material before asking player
+   * - Intelligent fallback strategies
+   */
+  async procureMaterialsWithRetry(missing, buildPosition = null) {
+    this.bot.chat('🔍 Beschaffe fehlende Materialien...');
+
+    // Step 0: Clean inventory first
+    await this.initializeSmartCrafting();
+    await this.cleanInventory();
+
+    // Save build position for return later
+    const savedBuildPos = buildPosition || (this.buildState ? this.buildState.position : null);
+
+    // Step 1: Withdraw from chests what's available
+    const storageMap = await this.smartCraftingManager.storageManager.scanNearbyChests();
+
+    for (const [material, count] of Object.entries(missing)) {
+      const inventory = this.getInventoryCounts();
+      const inInventory = inventory[material] || 0;
+
+      if (inInventory >= count) {
+        continue; // Already have enough
+      }
+
+      const stillNeeded = count - inInventory;
+
+      // Check if available in chests
+      let inChests = 0;
+      for (const contents of Object.values(storageMap)) {
+        inChests += contents[material] || 0;
+      }
+
+      if (inChests > 0) {
+        const toWithdraw = Math.min(stillNeeded, inChests);
+        this.bot.chat(`📦 Hole ${toWithdraw}x ${material} aus Truhen...`);
+
+        // Extract from each chest that has this material
+        let withdrawn = 0;
+        for (const [location, contents] of Object.entries(storageMap)) {
+          const available = contents[material] || 0;
+          if (available > 0 && withdrawn < toWithdraw) {
+            const toExtract = Math.min(toWithdraw - withdrawn, available);
+            const pos = location.split(',').map(Number);
+
+            try {
+              const actualExtracted = await this.smartCraftingManager.storageManager.extractFromChest(
+                new Vec3(pos[0], pos[1], pos[2]),
+                material,
+                toExtract
+              );
+              withdrawn += actualExtracted;
+            } catch (error) {
+              console.log(`⚠️ Could not extract from chest at ${location}: ${error.message}`);
+            }
+
+            if (withdrawn >= toWithdraw) break;
+          }
+        }
+
+        if (withdrawn > 0) {
+          this.bot.chat(`✅ ${withdrawn}x ${material} aus Truhen geholt!`);
+        }
+      }
+    }
+
+    // Step 2: Check what's still missing after chest withdrawal
+    const inventory = this.getInventoryCounts();
+    const stillMissing = {};
+
+    for (const [material, count] of Object.entries(missing)) {
+      const inInventory = inventory[material] || 0;
+      if (inInventory < count) {
+        stillMissing[material] = count - inInventory;
+      }
+    }
+
+    if (Object.keys(stillMissing).length === 0) {
+      this.bot.chat('✅ Alle Materialien vorhanden!');
+      return { success: true };
+    }
+
+    // Step 3: Gather materials with retry logic and intelligent strategies
+    for (const [material, count] of Object.entries(stillMissing)) {
+      // Initialize retry counter if not exists
+      if (!this.gatheringRetries[material]) {
+        this.gatheringRetries[material] = 0;
+      }
+
+      const category = this.materialClassifier.classify(material);
+      this.bot.chat(`🔍 Material: ${material} (Kategorie: ${category})`);
+
+      // Strategy 1: Use smartCollect for base materials
+      if (this.materialClassifier.shouldUseSmartCollect(material)) {
+        this.bot.chat(`⛏️ Sammle ${count}x ${material} (Base-Material)...`);
+
+        const success = await this.smartCraftingManager.collectIntelligently(
+          material,
+          count,
+          { checkChests: false, strategy: 'auto' }
+        );
+
+        if (success) {
+          this.bot.chat(`✅ ${material} gesammelt!`);
+          this.gatheringRetries[material] = 0; // Reset on success
+          continue;
+        }
+
+        // Failed - increment retry counter
+        this.gatheringRetries[material]++;
+      }
+
+      // Strategy 2: Try crafting for craftable items
+      if (category === 'simple_craft' || category === 'complex_craft') {
+        this.bot.chat(`🔨 Versuche ${count}x ${material} zu craften...`);
+
+        const craftSuccess = await this.smartCraftingManager.craftIntelligently(
+          material,
+          count
+        );
+
+        if (craftSuccess) {
+          this.bot.chat(`✅ ${material} gecraftet!`);
+          this.gatheringRetries[material] = 0; // Reset on success
+          continue;
+        }
+
+        // Failed - increment retry counter
+        this.gatheringRetries[material]++;
+      }
+
+      // Strategy 3: If difficult material or failed multiple times, ask for help
+      if (category === 'difficult' || this.gatheringRetries[material] >= 3) {
+        this.bot.chat(`⏸️ Konnte ${material} nach ${this.gatheringRetries[material]} Versuchen nicht beschaffen.`);
+        this.bot.chat(`💬 Kannst du mir helfen ${count}x ${material} zu besorgen?`);
+        this.bot.chat(`📝 Ideen: ${this.getSuggestionsForGathering(material)}`);
+
+        // Notify LLM
+        if (this.agent && this.agent.history) {
+          await this.agent.history.add('system',
+            `Build paused after ${this.gatheringRetries[material]} attempts: Cannot gather ${count}x ${material}. ` +
+            `Need help from player. Suggestions: ${this.getSuggestionsForGathering(material)}. ` +
+            `Respond to player and ask them for help getting this material. ` +
+            `They can use !buildresume when materials are ready.`
+          );
+        }
+
+        // Don't reset retry counter - keep it for next time
+        return { success: false, failed: material, needsHelp: true, attempts: this.gatheringRetries[material] };
+      }
+
+      // Strategy 4: Final fallback - try recipe resolution
+      const resolved = this.resolveCraftingRecipes({ [material]: count });
+
+      if (Object.keys(resolved.baseItems).length > 0) {
+        this.bot.chat(`📦 Sammle Basis-Materialien für ${material}...`);
+
+        for (const [baseMaterial, baseCount] of Object.entries(resolved.baseItems)) {
+          const baseSuccess = await this.smartCraftingManager.collectIntelligently(
+            baseMaterial,
+            baseCount,
+            { checkChests: false, strategy: 'auto' }
+          );
+
+          if (!baseSuccess) {
+            this.gatheringRetries[material]++;
+            break;
+          }
+        }
+
+        // Try crafting again after gathering base materials
+        const craftSuccess = await this.smartCraftingManager.craftIntelligently(material, count);
+        if (craftSuccess) {
+          this.bot.chat(`✅ ${material} gecraftet!`);
+          this.gatheringRetries[material] = 0;
+          continue;
+        }
+      }
+
+      // If we reach here, increment retry and try again next time
+      this.gatheringRetries[material]++;
+      this.bot.chat(`⚠️ Versuch ${this.gatheringRetries[material]}/3 für ${material} fehlgeschlagen`);
+    }
+
+    // Return to build position after gathering
+    if (savedBuildPos) {
+      this.bot.chat('🏗️ Kehre zum Bauplatz zurück...');
+      await this.returnToBuildSite(savedBuildPos);
+    }
+
+    this.bot.chat('✅ Alle Materialien beschafft!');
+    return { success: true };
+  }
+
+  /**
+   * OLD VERSION - Kept for backward compatibility
    * Procure missing materials using smart crafting with recipe resolution
    * Withdraws from chests FIRST, then gathers/crafts what's still missing
    */
   async procureMaterials(missing, buildPosition = null) {
     this.bot.chat('🔍 Beschaffe fehlende Materialien...');
+
+    // Step 0: Clean inventory first
+    await this.initializeSmartCrafting();
+    await this.cleanInventory();
 
     // Save build position for return later
     const savedBuildPos = buildPosition || (this.buildState ? this.buildState.position : null);
@@ -1271,6 +1729,175 @@ class SurvivalBuildCoordinator {
   }
 
   /**
+   * Continue build from saved state (for resume functionality)
+   */
+  async _continueBuildFromState(schematicInfo, schematicData) {
+    if (!this.buildState) {
+      return { success: false, reason: 'No build state to continue from' };
+    }
+
+    const state = this.buildState;
+    state.status = 'building'; // Resume building
+
+    try {
+      // Phase 2: Organize by layers
+      const layers = this.organizeByLayer(schematicData, state.position);
+      const sortedLayers = Array.from(layers.keys()).sort((a, b) => a - b);
+
+      // Find which layer index we're on
+      let startLayerIndex = sortedLayers.findIndex(y => y === state.currentLayer);
+      if (startLayerIndex === -1) {
+        startLayerIndex = 0; // Fallback to start
+      }
+
+      // IMPORTANT: Check if current layer is already complete
+      // If all blocks in this layer are placed, move to NEXT layer
+      const currentLayerBlocks = layers.get(sortedLayers[startLayerIndex]);
+      const allPlacedInCurrentLayer = currentLayerBlocks.every(blockInfo => {
+        const key = `${blockInfo.pos.x},${blockInfo.pos.y},${blockInfo.pos.z}`;
+        return state.placedBlocks.has(key);
+      });
+
+      if (allPlacedInCurrentLayer && startLayerIndex < sortedLayers.length - 1) {
+        startLayerIndex++; // Move to next layer
+        console.log(`✅ Current layer ${state.currentLayer} already complete, moving to next layer`);
+      }
+
+      this.bot.chat(`🔄 Fortsetzen ab Schicht ${startLayerIndex + 1}/${sortedLayers.length}`);
+
+      let blocksPlaced = 0;
+      let errors = 0;
+
+      // Phase 3: Continue building from saved layer
+      for (let layerIndex = startLayerIndex; layerIndex < sortedLayers.length; layerIndex++) {
+        const layerY = sortedLayers[layerIndex];
+        const blocks = layers.get(layerY);
+
+        this.bot.chat(`📐 Schicht ${layerIndex + 1}/${sortedLayers.length} (Y=${layerY}, ${blocks.length} Blöcke)`);
+
+        // Step 1: Analyze materials needed for this layer
+        const layerMaterials = this.analyzeLayerMaterials(blocks);
+        const currentInventory = this.getInventoryCounts();
+        const actuallyMissing = {};
+
+        for (const [item, needed] of Object.entries(layerMaterials)) {
+          const inInventory = currentInventory[item] || 0;
+          if (inInventory < needed) {
+            actuallyMissing[item] = needed - inInventory;
+          }
+        }
+
+        // Step 2: Gather missing materials if needed
+        if (Object.keys(actuallyMissing).length > 0) {
+          this.bot.chat(`📦 Sammle Materialien für Schicht ${layerIndex + 1}...`);
+
+          const procureResult = await this.procureMaterialsWithRetry(actuallyMissing, state.position);
+
+          if (!procureResult.success) {
+            if (procureResult.needsHelp) {
+              // Pause and wait for help
+              this.pauseBuild('waiting_for_help');
+              this.bot.chat(`⏸️ Build pausiert. Waiting for help with ${procureResult.failed}.`);
+              this.bot.chat(`Use !buildresume when materials are ready.`);
+              return { success: false, reason: `Waiting for help: ${procureResult.failed}`, canResume: true, needsHelp: true };
+            } else {
+              this.bot.chat(`❌ Konnte ${procureResult.failed} nicht beschaffen!`);
+              this.pauseBuild('material_gathering_failed');
+              return { success: false, reason: `Material gathering failed: ${procureResult.failed}`, canResume: true };
+            }
+          }
+
+          this.bot.chat(`✅ Materialien für Schicht ${layerIndex + 1} vollständig!`);
+        }
+
+        // Step 3: Build this layer
+        console.log(`🏗️ Building Layer Y=${layerY} (${blocks.length} blocks)`);
+
+        // Health check
+        if (this.bot.health < 6) {
+          this.pauseBuild('low_health');
+          this.bot.chat('⚠️ Niedrige Gesundheit! Bau pausiert. Nutze !buildresume zum Fortsetzen.');
+          return { success: false, reason: 'Paused due to low health', canResume: true };
+        }
+
+        for (const blockInfo of blocks) {
+          // Check if already placed (for resume support)
+          const key = `${blockInfo.pos.x},${blockInfo.pos.y},${blockInfo.pos.z}`;
+
+          if (state.placedBlocks.has(key)) {
+            continue; // Skip already placed blocks
+          }
+
+          // Place block with orientation
+          const success = await this.blockPlacer.placeBlock(
+            blockInfo.block,
+            blockInfo.pos,
+            blockInfo.properties
+          );
+
+          if (success) {
+            blocksPlaced++;
+            state.placedBlocks.add(key);
+          } else {
+            errors++;
+          }
+
+          // Save state every 10 blocks
+          if (blocksPlaced % 10 === 0) {
+            this.saveBuildState();
+          }
+
+          await new Promise(r => setTimeout(r, settings.block_place_delay || 800));
+
+          if (errors > 30) {
+            this.bot.chat('❌ Zu viele Fehler, Bau pausiert.');
+            this.pauseBuild('too_many_errors');
+            return { success: false, reason: 'Too many errors', canResume: true };
+          }
+        }
+
+        state.currentLayer = layerY;
+        this.saveBuildState();
+
+        // Progress report
+        const progress = Math.round((state.placedBlocks.size / state.totalBlocks) * 100);
+        this.bot.chat(`✅ Schicht ${layerIndex + 1}/${sortedLayers.length} fertig (${progress}% gesamt)`);
+
+        // Brief pause between layers
+        if (layerY < sortedLayers[sortedLayers.length - 1]) {
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+
+      // Phase 4: Complete
+      const duration = ((Date.now() - state.startTime) / 1000).toFixed(1);
+      const successRate = Math.round((blocksPlaced / (blocksPlaced + errors)) * 100);
+
+      // Clear build state
+      this.buildState = null;
+
+      return {
+        success: true,
+        blocksPlaced,
+        errors,
+        duration,
+        successRate
+      };
+
+    } catch (error) {
+      console.error('❌ Build error:', error);
+      this.bot.chat(`❌ Baufehler: ${error.message}`);
+
+      if (this.buildState) {
+        this.pauseBuild('error');
+        this.saveBuildState();
+      }
+
+      return { success: false, reason: error.message, canResume: true };
+    }
+  }
+
+  /**
    * Main build function with survival mode support (Layer-by-Layer)
    */
   async buildWithSurvivalMode(schematicInfo, schematicData, position) {
@@ -1313,7 +1940,7 @@ class SurvivalBuildCoordinator {
         if (Object.keys(actuallyMissing).length > 0) {
           this.bot.chat(`📦 Sammle Materialien für Schicht ${layerIndex + 1}...`);
 
-          const procureResult = await this.procureMaterials(actuallyMissing, position);
+          const procureResult = await this.procureMaterialsWithRetry(actuallyMissing, position);
 
           if (!procureResult.success) {
             if (procureResult.needsHelp) {
@@ -1723,35 +2350,60 @@ export class BuildingManager {
    */
   async resumeBuild() {
     if (!this.survivalCoordinator.buildState) {
-      return 'Kein gespeicherter Build-State gefunden.';
+      const msg = '❌ Kein gespeicherter Build-State gefunden. Nutze !build um neu zu starten.';
+      this.bot.chat(msg);
+      return msg;
     }
 
     const state = this.survivalCoordinator.buildState;
 
     if (state.status !== 'paused') {
-      return 'Build ist nicht pausiert.';
+      const msg = `❌ Build ist nicht pausiert (Status: ${state.status}).`;
+      this.bot.chat(msg);
+      return msg;
     }
 
-    this.bot.chat(`▶️ Setze Bau fort: ${state.schematicName} (Layer ${state.currentLayer})`);
+    const progress = `${state.placedBlocks.size}/${state.totalBlocks}`;
+    const percent = Math.round((state.placedBlocks.size / state.totalBlocks) * 100);
 
-    // Resume build state
+    this.bot.chat(`▶️ Setze Bau fort: ${state.schematicName}`);
+    this.bot.chat(`📊 Fortschritt: ${progress} Blöcke (${percent}%) | Layer ${state.currentLayer}`);
+
+    if (state.pauseReason) {
+      this.bot.chat(`💡 Pausiert wegen: ${state.pauseReason}`);
+    }
+
+    // Resume build state (sets status back to 'building')
     this.survivalCoordinator.resumeBuild();
 
     // Load schematic data
     const schematicInfo = this.registry.find(state.schematicName);
+    if (!schematicInfo) {
+      const msg = `❌ Schematic "${state.schematicName}" nicht mehr gefunden!`;
+      this.bot.chat(msg);
+      return msg;
+    }
+
     const schematicData = await this.registry.loadSchematicData(schematicInfo);
 
-    // Continue building (placedBlocks Set prevents re-placement)
-    const result = await this.survivalCoordinator.buildWithSurvivalMode(
+    // Continue building from saved state (placedBlocks Set prevents re-placement)
+    const result = await this.survivalCoordinator._continueBuildFromState(
       schematicInfo,
-      schematicData,
-      state.position
+      schematicData
     );
 
     if (result.success) {
-      return `✅ Bau fortgesetzt und abgeschlossen! ${result.blocksPlaced} Blöcke`;
+      const msg = `✅ Bau abgeschlossen! ${result.blocksPlaced} Blöcke in ${result.duration}s (${result.successRate}%)`;
+      this.bot.chat(msg);
+      return msg;
+    } else if (result.canResume) {
+      const msg = `⏸️ Bau erneut pausiert: ${result.reason}. Nutze !buildresume zum Fortsetzen.`;
+      this.bot.chat(msg);
+      return msg;
     } else {
-      return `❌ Bau konnte nicht fortgesetzt werden: ${result.reason}`;
+      const msg = `❌ Bau fehlgeschlagen: ${result.reason}`;
+      this.bot.chat(msg);
+      return msg;
     }
   }
 
@@ -1762,24 +2414,49 @@ export class BuildingManager {
     const state = this.survivalCoordinator.buildState;
 
     if (!state) {
-      return 'Kein aktiver Build-State.';
+      const msg = '❌ Kein aktiver Build-State. Nutze !build um einen Build zu starten.';
+      this.bot.chat(msg);
+      return msg;
     }
 
     const progress = `${state.placedBlocks.size}/${state.totalBlocks}`;
     const percent = Math.round((state.placedBlocks.size / state.totalBlocks) * 100);
     const elapsed = ((Date.now() - state.startTime) / 1000).toFixed(1);
 
-    let message = `🏗️ Build State:\n`;
-    message += `Schematic: ${state.schematicName}\n`;
-    message += `Status: ${state.status}\n`;
-    message += `Progress: ${progress} (${percent}%)\n`;
-    message += `Current Layer: ${state.currentLayer}\n`;
-    message += `Elapsed: ${elapsed}s\n`;
+    // Status emoji
+    const statusEmoji = {
+      'building': '🏗️',
+      'paused': '⏸️',
+      'completed': '✅',
+      'error': '❌'
+    }[state.status] || '❓';
+
+    let message = `${statusEmoji} Build State:\n`;
+    message += `📦 Schematic: ${state.schematicName}\n`;
+    message += `📊 Status: ${state.status.toUpperCase()}\n`;
+    message += `📈 Progress: ${progress} Blöcke (${percent}%)\n`;
+    message += `🗂️ Current Layer: ${state.currentLayer}\n`;
+    message += `⏱️ Elapsed Time: ${elapsed}s\n`;
 
     if (state.pauseReason) {
-      message += `Pause Reason: ${state.pauseReason}\n`;
+      const reasonEmoji = {
+        'waiting_for_help': '🆘',
+        'low_health': '❤️',
+        'material_gathering_failed': '📦',
+        'too_many_errors': '⚠️',
+        'combat': '⚔️',
+        'death': '💀',
+        'error': '❌'
+      }[state.pauseReason] || '⏸️';
+
+      message += `${reasonEmoji} Pause Reason: ${state.pauseReason}\n`;
     }
 
+    if (state.status === 'paused') {
+      message += `\n💡 Use !buildresume to continue building`;
+    }
+
+    this.bot.chat(message);
     return message;
   }
 }

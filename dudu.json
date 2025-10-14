@@ -1,6 +1,6 @@
 {
     "name": "Dudu",
-    "model": "lmstudio/qwen/qwen3-8b",
+    "model": "lmstudio/openai/gpt-oss-20b",
     "embedding": "lmstudio",
     "max_tokens": 4096,
     "temperature": 0.7,

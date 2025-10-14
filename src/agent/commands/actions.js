@@ -14,20 +14,21 @@ import convoManager from '../conversation.js';
  */
 function runAsAction(actionFn, resume = false, timeout = -1) {
     let actionLabel = null;
-    
+
     const wrappedAction = async function (agent, ...args) {
         if (!actionLabel) {
             const actionObj = actionsList.find(a => a.perform === wrappedAction);
             actionLabel = actionObj.name.substring(1);
         }
 
+        let result = null;
         const actionFnWithAgent = async () => {
-            await actionFn(agent, ...args);
+            result = await actionFn(agent, ...args);
         };
         const code_return = await agent.actions.runAction(`action:${actionLabel}`, actionFnWithAgent, { timeout, resume });
         if (code_return.interrupted && !code_return.timedout)
             return;
-        return code_return.message;
+        return result || code_return.message;
     }
 
     return wrappedAction;
