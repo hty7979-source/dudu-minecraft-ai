@@ -44,10 +44,10 @@ export class SmartCollectEnhanced {
      */
     async smartCollectWithFullIntegration(blockType, count = 1, options = {}) {
         console.log(`🎯 Enhanced Smart Collect: ${count}x ${blockType}`);
-        this.bot.chat(`🔍 Searching for ${count}x ${blockType}...`);
+        console.log(`🔍 Searching for ${count}x ${blockType}...`);
 
         if (count < 1) {
-            this.bot.chat(`❌ Invalid count: ${count}`);
+            console.log(`❌ Invalid count: ${count}`);
             return false;
         }
 
@@ -56,7 +56,7 @@ export class SmartCollectEnhanced {
             const collectPlan = await this.createComprehensiveCollectionPlan(blockType, count);
             
             if (collectPlan.alreadySatisfied) {
-                this.bot.chat(`✅ Already have enough ${blockType}! (${collectPlan.currentCount}/${count})`);
+                console.log(`✅ Already have enough ${blockType}! (${collectPlan.currentCount}/${count})`);
                 return true;
             }
 
@@ -76,7 +76,7 @@ export class SmartCollectEnhanced {
 
         } catch (error) {
             console.log(`❌ Smart Collect Enhanced failed: ${error.message}`);
-            this.bot.chat(`❌ Collection failed: ${error.message}`);
+            console.log(`❌ Collection failed: ${error.message}`);
             return false;
         }
     }
@@ -169,7 +169,7 @@ export class SmartCollectEnhanced {
         if (spaceManaged) {
             const newFreeSlots = this.bot.inventory.emptySlotCount();
             console.log(`✅ Inventory management successful: ${newFreeSlots} slots now available`);
-            this.bot.chat(`✅ Made space! ${newFreeSlots} slots available.`);
+            console.log(`✅ Made space! ${newFreeSlots} slots available.`);
             return true;
         }
 
@@ -194,7 +194,7 @@ export class SmartCollectEnhanced {
             totalCollected += extractedFromChests;
             
             if (totalCollected >= targetCount) {
-                this.bot.chat(`✅ Collection complete! Found all ${targetCount}x ${collectPlan.targetBlock} in storage.`);
+                console.log(`✅ Collection complete! Found all ${targetCount}x ${collectPlan.targetBlock} in storage.`);
                 return true;
             }
         }
@@ -210,7 +210,7 @@ export class SmartCollectEnhanced {
             totalCollected += craftedItems;
             
             if (totalCollected >= targetCount) {
-                this.bot.chat(`✅ Collection complete via crafting! ${totalCollected}/${targetCount}`);
+                console.log(`✅ Collection complete via crafting! ${totalCollected}/${targetCount}`);
                 return true;
             }
         }
@@ -226,7 +226,7 @@ export class SmartCollectEnhanced {
             totalCollected += smeltedItems;
             
             if (totalCollected >= targetCount) {
-                this.bot.chat(`✅ Collection complete via smelting! ${totalCollected}/${targetCount}`);
+                console.log(`✅ Collection complete via smelting! ${totalCollected}/${targetCount}`);
                 return true;
             }
         }
@@ -246,13 +246,13 @@ export class SmartCollectEnhanced {
         const finalCount = world.getInventoryCounts(this.bot)[collectPlan.targetBlock] || 0;
         
         if (finalCount >= targetCount) {
-            this.bot.chat(`✅ Collection successful! Got ${finalCount}/${targetCount} ${collectPlan.targetBlock}`);
+            console.log(`✅ Collection successful! Got ${finalCount}/${targetCount} ${collectPlan.targetBlock}`);
             return true;
         } else if (finalCount > collectPlan.currentCount) {
             this.bot.chat(`⚠️ Partial success: collected ${finalCount}/${targetCount} ${collectPlan.targetBlock}`);
             return finalCount > 0;
         } else {
-            this.bot.chat(`❌ Could not collect ${collectPlan.targetBlock}. Try placing more chests or crafting tools.`);
+            console.log(`❌ Could not collect ${collectPlan.targetBlock}. Try placing more chests or crafting tools.`);
             return false;
         }
     }

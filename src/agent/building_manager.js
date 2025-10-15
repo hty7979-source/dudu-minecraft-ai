@@ -447,26 +447,6 @@ class BlockPlacer {
       return true;
     }
 
-    // ========== NEW: Line of Sight Check ==========
-    // Check if bot can see the target position
-    if (!this.hasLineOfSight(pos)) {
-      console.log(`👁️ No line of sight to ${pos}, moving to better position...`);
-
-      const moved = await this.moveToPlacementPosition(pos);
-
-      if (!moved) {
-        console.log(`⚠️ Could not find position with line of sight for ${baseBlockName}`);
-        // Try anyway - might still work
-      }
-
-      // Re-check after moving
-      if (!this.hasLineOfSight(pos)) {
-        console.log(`⚠️ Still no line of sight after moving for ${baseBlockName}`);
-        // Continue anyway - placement might still work depending on terrain
-      }
-    }
-    // ==============================================
-
     // Handle block orientation BEFORE placement
     if (properties.facing && this.orientationHandler.needsOrientation(baseBlockName)) {
       const placementFacing = this.orientationHandler.getPlacementFacing(baseBlockName, properties.facing);
@@ -478,21 +458,36 @@ class BlockPlacer {
       return await this.placeBlockCreative(baseBlockName, pos, properties);
     }
 
-    // Survival Mode: Verwende Skills API (Mineflayer compliant)
+    // Survival Mode: Optimierte Platzierung mit Line-of-Sight
     try {
+      // Versuche erstmal direkt zu platzieren ohne Line-of-Sight Check
       const result = await skills.placeBlock(this.bot, baseBlockName, pos.x, pos.y, pos.z, 'bottom', false);
 
-      if (!result) {
-        console.log(`⚠️ PlaceBlock returned false for ${baseBlockName}`);
-        return false;
+      if (result) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return this.isBlockAlreadyPlaced(pos, baseBlockName);
       }
 
-      // Verify placement after a short delay
-      await new Promise(resolve => setTimeout(resolve, 100));
-      return this.isBlockAlreadyPlaced(pos, baseBlockName);
+      // Nur bei Fehlschlag Line-of-Sight prüfen und bewegen
+      if (!this.hasLineOfSight(pos)) {
+        console.log(`👁️ No line of sight, attempting repositioning...`);
+        const moved = await this.moveToPlacementPosition(pos);
+
+        // Zweiter Versuch nach Bewegung
+        if (moved) {
+          const retryResult = await skills.placeBlock(this.bot, baseBlockName, pos.x, pos.y, pos.z, 'bottom', false);
+          if (retryResult) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            return this.isBlockAlreadyPlaced(pos, baseBlockName);
+          }
+        }
+      }
+
+      return false; // Fehlschlag
 
     } catch (error) {
-      console.log(`❌ PlaceBlock error for ${baseBlockName}: ${error.message}`);
+      console.log(`⚠️ PlaceBlock error for ${baseBlockName}: ${error.message}`);
+      // Nicht als kompletten Fehler zählen, nur als Warning
       return false;
     }
   }
@@ -713,15 +708,16 @@ class BuildExecutor {
       this.currentBuild.totalBlocks = Array.from(blocksByLayer.values())
         .reduce((sum, layer) => sum + layer.length, 0);
       
-      this.bot.chat(`🗂️ Building ${this.currentBuild.totalBlocks} blocks in ${sortedLayers.length} layers`);
+      console.log(`🗂️ Building ${this.currentBuild.totalBlocks} blocks in ${sortedLayers.length} layers`);
       
       let blocksPlaced = 0;
       let errors = 0;
-      
+      const initialBlocksPlaced = this.currentBuild.blocksPlaced;
+
       for (const layerY of sortedLayers) {
         const layerBlocks = blocksByLayer.get(layerY);
         console.log(`🏗️ Building Layer Y=${layerY} (${layerBlocks.length} blocks)`);
-        
+
         for (const blockInfo of layerBlocks) {
           // Pass properties to blockPlacer
           const success = await this.blockPlacer.placeBlock(
@@ -740,9 +736,24 @@ class BuildExecutor {
 
           await new Promise(resolve => setTimeout(resolve, settings.block_place_delay || 800));
 
-          if (errors > 30) {
-            this.bot.chat('❌ Too many errors, stopping build');
-            break;
+          // Enhanced error handling with recovery
+          if (errors > 50) {
+            console.log(`⚠️ Many errors (${errors}), attempting recovery...`);
+
+            // Kurze Pause für Bot-Stabilisierung
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Reset error counter nach erfolgreichen Platzierungen
+            if (blocksPlaced > initialBlocksPlaced + 5) {
+              errors = Math.floor(errors / 2); // Halbiere Fehler nach Fortschritt
+              console.log(`✅ Progress detected, reducing error count to ${errors}`);
+            }
+
+            // Nur pausieren, nicht abbrechen
+            if (errors > 75) {
+              this.bot.chat('⏸️ Pausiere für Fehlerkorrektur. Build kann später fortgesetzt werden.');
+              return { success: false, reason: 'Error recovery needed', canResume: true, blocksPlaced, errors };
+            }
           }
         }
         
@@ -1118,7 +1129,7 @@ class SurvivalBuildCoordinator {
     }
 
     if (toStore.length > 0) {
-      this.bot.chat(`🧹 Räume Inventar auf (${toStore.length} Items)...`);
+      console.log(`🧹 Räume Inventar auf (${toStore.length} Items)...`);
 
       // Find nearest chest
       const chestPositions = this.bot.findBlocks({
@@ -1129,7 +1140,7 @@ class SurvivalBuildCoordinator {
 
       if (chestPositions.length > 0) {
         await this.smartCraftingManager.storageManager.storeInChest(toStore);
-        this.bot.chat('✅ Inventar aufgeräumt!');
+        console.log('✅ Inventar aufgeräumt!');
       }
     }
   }
@@ -1143,7 +1154,7 @@ class SurvivalBuildCoordinator {
    * - Intelligent fallback strategies
    */
   async procureMaterialsWithRetry(missing, buildPosition = null) {
-    this.bot.chat('🔍 Beschaffe fehlende Materialien...');
+    console.log('🔍 Beschaffe fehlende Materialien...');
 
     // Step 0: Clean inventory first
     await this.initializeSmartCrafting();
@@ -1173,7 +1184,7 @@ class SurvivalBuildCoordinator {
 
       if (inChests > 0) {
         const toWithdraw = Math.min(stillNeeded, inChests);
-        this.bot.chat(`📦 Hole ${toWithdraw}x ${material} aus Truhen...`);
+        console.log(`📦 Hole ${toWithdraw}x ${material} aus Truhen...`);
 
         // Extract from each chest that has this material
         let withdrawn = 0;
@@ -1199,7 +1210,7 @@ class SurvivalBuildCoordinator {
         }
 
         if (withdrawn > 0) {
-          this.bot.chat(`✅ ${withdrawn}x ${material} aus Truhen geholt!`);
+          console.log(`✅ ${withdrawn}x ${material} aus Truhen geholt!`);
         }
       }
     }
@@ -1216,7 +1227,46 @@ class SurvivalBuildCoordinator {
     }
 
     if (Object.keys(stillMissing).length === 0) {
-      this.bot.chat('✅ Alle Materialien vorhanden!');
+      console.log('✅ Alle Materialien vorhanden!');
+      return { success: true };
+    }
+
+    // Step 2.5: Check for material substitutions
+    const materialSubstitutions = {
+      'white_bed': ['bed', 'red_bed', 'blue_bed', 'black_bed', 'brown_bed', 'green_bed'],
+      'chest': ['barrel'],
+      'glass': ['glass_pane'],
+      'cobblestone_stairs': ['stone_stairs', 'stone_brick_stairs']
+    };
+
+    for (const [material, count] of Object.entries(stillMissing)) {
+      // Check für Substitutionen
+      const substitutes = materialSubstitutions[material];
+      if (substitutes) {
+        for (const substitute of substitutes) {
+          const subInventory = this.getInventoryCounts();
+          if (subInventory[substitute] >= count) {
+            console.log(`✅ Using ${substitute} as substitute for ${material}`);
+            delete stillMissing[material];
+            break;
+          }
+        }
+      }
+
+      // Wenn Material nicht kritisch ist, überspringe es
+      const nonCriticalMaterials = ['glass', 'chest', 'bed', 'door', 'painting', 'item_frame'];
+      if (nonCriticalMaterials.some(ncm => material.includes(ncm))) {
+        if (stillMissing[material]) {
+          console.log(`⚠️ Skipping non-critical material: ${material}`);
+          this.bot.chat(`⚠️ Überspringe optionales Material: ${material}`);
+          delete stillMissing[material];
+          continue;
+        }
+      }
+    }
+
+    if (Object.keys(stillMissing).length === 0) {
+      console.log('✅ Alle kritischen Materialien vorhanden oder substituiert!');
       return { success: true };
     }
 
@@ -1228,11 +1278,11 @@ class SurvivalBuildCoordinator {
       }
 
       const category = this.materialClassifier.classify(material);
-      this.bot.chat(`🔍 Material: ${material} (Kategorie: ${category})`);
+      console.log(`🔍 Material: ${material} (Kategorie: ${category})`);
 
       // Strategy 1: Use smartCollect for base materials
       if (this.materialClassifier.shouldUseSmartCollect(material)) {
-        this.bot.chat(`⛏️ Sammle ${count}x ${material} (Base-Material)...`);
+        console.log(`⛏️ Sammle ${count}x ${material} (Base-Material)...`);
 
         const success = await this.smartCraftingManager.collectIntelligently(
           material,
@@ -1241,7 +1291,7 @@ class SurvivalBuildCoordinator {
         );
 
         if (success) {
-          this.bot.chat(`✅ ${material} gesammelt!`);
+          console.log(`✅ ${material} gesammelt!`);
           this.gatheringRetries[material] = 0; // Reset on success
           continue;
         }
@@ -1252,7 +1302,7 @@ class SurvivalBuildCoordinator {
 
       // Strategy 2: Try crafting for craftable items
       if (category === 'simple_craft' || category === 'complex_craft') {
-        this.bot.chat(`🔨 Versuche ${count}x ${material} zu craften...`);
+        console.log(`🔨 Versuche ${count}x ${material} zu craften...`);
 
         const craftSuccess = await this.smartCraftingManager.craftIntelligently(
           material,
@@ -1260,7 +1310,7 @@ class SurvivalBuildCoordinator {
         );
 
         if (craftSuccess) {
-          this.bot.chat(`✅ ${material} gecraftet!`);
+          console.log(`✅ ${material} gecraftet!`);
           this.gatheringRetries[material] = 0; // Reset on success
           continue;
         }
@@ -1293,7 +1343,7 @@ class SurvivalBuildCoordinator {
       const resolved = this.resolveCraftingRecipes({ [material]: count });
 
       if (Object.keys(resolved.baseItems).length > 0) {
-        this.bot.chat(`📦 Sammle Basis-Materialien für ${material}...`);
+        console.log(`📦 Sammle Basis-Materialien für ${material}...`);
 
         for (const [baseMaterial, baseCount] of Object.entries(resolved.baseItems)) {
           const baseSuccess = await this.smartCraftingManager.collectIntelligently(
@@ -1311,7 +1361,7 @@ class SurvivalBuildCoordinator {
         // Try crafting again after gathering base materials
         const craftSuccess = await this.smartCraftingManager.craftIntelligently(material, count);
         if (craftSuccess) {
-          this.bot.chat(`✅ ${material} gecraftet!`);
+          console.log(`✅ ${material} gecraftet!`);
           this.gatheringRetries[material] = 0;
           continue;
         }
@@ -1319,16 +1369,16 @@ class SurvivalBuildCoordinator {
 
       // If we reach here, increment retry and try again next time
       this.gatheringRetries[material]++;
-      this.bot.chat(`⚠️ Versuch ${this.gatheringRetries[material]}/3 für ${material} fehlgeschlagen`);
+      console.log(`⚠️ Versuch ${this.gatheringRetries[material]}/3 für ${material} fehlgeschlagen`);
     }
 
     // Return to build position after gathering
     if (savedBuildPos) {
-      this.bot.chat('🏗️ Kehre zum Bauplatz zurück...');
+      console.log('🏗️ Kehre zum Bauplatz zurück...');
       await this.returnToBuildSite(savedBuildPos);
     }
 
-    this.bot.chat('✅ Alle Materialien beschafft!');
+    console.log('✅ Alle Materialien beschafft!');
     return { success: true };
   }
 
@@ -1338,7 +1388,7 @@ class SurvivalBuildCoordinator {
    * Withdraws from chests FIRST, then gathers/crafts what's still missing
    */
   async procureMaterials(missing, buildPosition = null) {
-    this.bot.chat('🔍 Beschaffe fehlende Materialien...');
+    console.log('🔍 Beschaffe fehlende Materialien...');
 
     // Step 0: Clean inventory first
     await this.initializeSmartCrafting();
@@ -1369,7 +1419,7 @@ class SurvivalBuildCoordinator {
 
       if (inChests > 0) {
         const toWithdraw = Math.min(stillNeeded, inChests);
-        this.bot.chat(`📦 Hole ${toWithdraw}x ${material} aus Truhen...`);
+        console.log(`📦 Hole ${toWithdraw}x ${material} aus Truhen...`);
 
         // Extract from each chest that has this material
         let withdrawn = 0;
@@ -1395,7 +1445,7 @@ class SurvivalBuildCoordinator {
         }
 
         if (withdrawn > 0) {
-          this.bot.chat(`✅ ${withdrawn}x ${material} aus Truhen geholt!`);
+          console.log(`✅ ${withdrawn}x ${material} aus Truhen geholt!`);
         }
       }
     }
@@ -1412,7 +1462,7 @@ class SurvivalBuildCoordinator {
     }
 
     if (Object.keys(stillMissing).length === 0) {
-      this.bot.chat('✅ Alle Materialien vorhanden!');
+      console.log('✅ Alle Materialien vorhanden!');
       return { success: true };
     }
 
@@ -1421,10 +1471,10 @@ class SurvivalBuildCoordinator {
 
     // Step 3: Gather base items (will go out into the world)
     if (Object.keys(resolved.baseItems).length > 0) {
-      this.bot.chat('📦 Sammle Basis-Materialien...');
+      console.log('📦 Sammle Basis-Materialien...');
 
       for (const [material, count] of Object.entries(resolved.baseItems)) {
-        this.bot.chat(`⛏️ Sammle: ${count}x ${material}`);
+        console.log(`⛏️ Sammle: ${count}x ${material}`);
 
         const success = await this.smartCraftingManager.collectIntelligently(
           material,
@@ -1452,12 +1502,12 @@ class SurvivalBuildCoordinator {
           return { success: false, failed: material, needsHelp: true };
         }
 
-        this.bot.chat(`✅ ${material} gesammelt!`);
+        console.log(`✅ ${material} gesammelt!`);
       }
 
       // Return to build position after gathering
       if (savedBuildPos) {
-        this.bot.chat('🏗️ Kehre zum Bauplatz zurück...');
+        console.log('🏗️ Kehre zum Bauplatz zurück...');
         await this.returnToBuildSite(savedBuildPos);
       }
     }
@@ -1484,11 +1534,11 @@ class SurvivalBuildCoordinator {
         );
 
         if (!craftSuccess) {
-          this.bot.chat(`❌ Konnte ${material} nicht craften!`);
+          console.log(`❌ Konnte ${material} nicht craften!`);
           return { success: false, failed: material };
         }
 
-        this.bot.chat(`✅ ${material} gecraftet!`);
+        console.log(`✅ ${material} gecraftet!`);
       }
     }
 
@@ -1516,13 +1566,13 @@ class SurvivalBuildCoordinator {
         );
 
         if (!craftSuccess) {
-          this.bot.chat(`❌ Konnte ${material} nicht beschaffen!`);
+          console.log(`❌ Konnte ${material} nicht beschaffen!`);
           return { success: false, failed: material };
         }
       }
     }
 
-    this.bot.chat('✅ Alle Materialien beschafft!');
+    console.log('✅ Alle Materialien beschafft!');
     return { success: true };
   }
 
@@ -1591,37 +1641,119 @@ class SurvivalBuildCoordinator {
   }
 
   /**
-   * Save build state (in-memory and optionally to file)
+   * Get the file path for saving build state
+   */
+  getBuildStateFilePath() {
+    const botName = this.bot.username;
+    const botsDir = path.join(__dirname, '..', '..', 'bots', botName);
+
+    // Ensure bots directory exists
+    if (!fs.existsSync(botsDir)) {
+      fs.mkdirSync(botsDir, { recursive: true });
+    }
+
+    return path.join(botsDir, 'build_state.json');
+  }
+
+  /**
+   * Save build state (in-memory and to file)
    */
   saveBuildState() {
     if (!this.buildState) return;
 
     this.buildState.lastUpdate = Date.now();
 
-    // Convert Set to Array for JSON serialization
+    // Speichere auch temporäre Fehler für Recovery
     const serializable = {
       ...this.buildState,
-      placedBlocks: Array.from(this.buildState.placedBlocks)
+      placedBlocks: Array.from(this.buildState.placedBlocks),
+      errorRecovery: {
+        consecutiveErrors: this.consecutiveErrors || 0,
+        lastErrorPosition: this.lastErrorPosition || null,
+        retriedPositions: this.retriedPositions || []
+      }
     };
 
     console.log(`💾 Build state saved: ${this.buildState.placedBlocks.size}/${this.buildState.totalBlocks} blocks placed`);
 
-    // TODO: Optionally save to file for persistence across restarts
-    // fs.writeFileSync('build_state.json', JSON.stringify(serializable, null, 2));
+    // Save to file for persistence across restarts
+    try {
+      const filePath = this.getBuildStateFilePath();
+      fs.writeFileSync(filePath, JSON.stringify(serializable, null, 2));
+      console.log(`✅ Build state saved to ${filePath}`);
+    } catch (error) {
+      console.error(`❌ Failed to save build state: ${error.message}`);
+    }
   }
 
   /**
-   * Load build state from memory or file
+   * Load build state from file
    */
   loadBuildState() {
+    // Check if already loaded in memory
     if (this.buildState && this.buildState.placedBlocks) {
-      // Convert Array back to Set if loaded from file
+      // Convert Array back to Set if needed
       if (Array.isArray(this.buildState.placedBlocks)) {
         this.buildState.placedBlocks = new Set(this.buildState.placedBlocks);
       }
       return true;
     }
-    return false;
+
+    // Try to load from file
+    try {
+      const filePath = this.getBuildStateFilePath();
+
+      if (!fs.existsSync(filePath)) {
+        console.log('📁 No saved build state found');
+        return false;
+      }
+
+      const data = fs.readFileSync(filePath, 'utf8');
+      const loaded = JSON.parse(data);
+
+      // Convert Array back to Set
+      if (loaded.placedBlocks && Array.isArray(loaded.placedBlocks)) {
+        loaded.placedBlocks = new Set(loaded.placedBlocks);
+      }
+
+      // Restore error recovery data
+      if (loaded.errorRecovery) {
+        this.consecutiveErrors = loaded.errorRecovery.consecutiveErrors || 0;
+        this.lastErrorPosition = loaded.errorRecovery.lastErrorPosition || null;
+        this.retriedPositions = loaded.errorRecovery.retriedPositions || [];
+        console.log(`✅ Error recovery data loaded: ${this.consecutiveErrors} errors tracked`);
+      }
+
+      this.buildState = loaded;
+
+      const progress = `${this.buildState.placedBlocks.size}/${this.buildState.totalBlocks}`;
+      const percent = Math.round((this.buildState.placedBlocks.size / this.buildState.totalBlocks) * 100);
+
+      console.log(`✅ Build state loaded: ${progress} blocks (${percent}%) - Layer ${this.buildState.currentLayer}`);
+      return true;
+
+    } catch (error) {
+      console.error(`❌ Failed to load build state: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Delete build state file (when build is completed or cancelled)
+   */
+  deleteBuildState() {
+    try {
+      const filePath = this.getBuildStateFilePath();
+
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log(`🗑️ Build state file deleted: ${filePath}`);
+      }
+
+      this.buildState = null;
+    } catch (error) {
+      console.error(`❌ Failed to delete build state: ${error.message}`);
+    }
   }
 
   /**
@@ -1773,7 +1905,7 @@ class SurvivalBuildCoordinator {
         const layerY = sortedLayers[layerIndex];
         const blocks = layers.get(layerY);
 
-        this.bot.chat(`📐 Schicht ${layerIndex + 1}/${sortedLayers.length} (Y=${layerY}, ${blocks.length} Blöcke)`);
+        console.log(`📐 Schicht ${layerIndex + 1}/${sortedLayers.length} (Y=${layerY}, ${blocks.length} Blöcke)`);
 
         // Step 1: Analyze materials needed for this layer
         const layerMaterials = this.analyzeLayerMaterials(blocks);
@@ -1789,7 +1921,7 @@ class SurvivalBuildCoordinator {
 
         // Step 2: Gather missing materials if needed
         if (Object.keys(actuallyMissing).length > 0) {
-          this.bot.chat(`📦 Sammle Materialien für Schicht ${layerIndex + 1}...`);
+          console.log(`📦 Sammle Materialien für Schicht ${layerIndex + 1}...`);
 
           const procureResult = await this.procureMaterialsWithRetry(actuallyMissing, state.position);
 
@@ -1801,13 +1933,13 @@ class SurvivalBuildCoordinator {
               this.bot.chat(`Use !buildresume when materials are ready.`);
               return { success: false, reason: `Waiting for help: ${procureResult.failed}`, canResume: true, needsHelp: true };
             } else {
-              this.bot.chat(`❌ Konnte ${procureResult.failed} nicht beschaffen!`);
+              console.log(`❌ Konnte ${procureResult.failed} nicht beschaffen!`);
               this.pauseBuild('material_gathering_failed');
               return { success: false, reason: `Material gathering failed: ${procureResult.failed}`, canResume: true };
             }
           }
 
-          this.bot.chat(`✅ Materialien für Schicht ${layerIndex + 1} vollständig!`);
+          console.log(`✅ Materialien für Schicht ${layerIndex + 1} vollständig!`);
         }
 
         // Step 3: Build this layer
@@ -1861,7 +1993,7 @@ class SurvivalBuildCoordinator {
 
         // Progress report
         const progress = Math.round((state.placedBlocks.size / state.totalBlocks) * 100);
-        this.bot.chat(`✅ Schicht ${layerIndex + 1}/${sortedLayers.length} fertig (${progress}% gesamt)`);
+        console.log(`✅ Schicht ${layerIndex + 1}/${sortedLayers.length} fertig (${progress}% gesamt)`);
 
         // Brief pause between layers
         if (layerY < sortedLayers[sortedLayers.length - 1]) {
@@ -1873,8 +2005,8 @@ class SurvivalBuildCoordinator {
       const duration = ((Date.now() - state.startTime) / 1000).toFixed(1);
       const successRate = Math.round((blocksPlaced / (blocksPlaced + errors)) * 100);
 
-      // Clear build state
-      this.buildState = null;
+      // Clear build state and delete file
+      this.deleteBuildState();
 
       return {
         success: true,
@@ -1919,7 +2051,7 @@ class SurvivalBuildCoordinator {
         const layerY = sortedLayers[layerIndex];
         const blocks = layers.get(layerY);
 
-        this.bot.chat(`📐 Schicht ${layerIndex + 1}/${sortedLayers.length} (Y=${layerY}, ${blocks.length} Blöcke)`);
+        console.log(`📐 Schicht ${layerIndex + 1}/${sortedLayers.length} (Y=${layerY}, ${blocks.length} Blöcke)`);
 
         // Step 1: Analyze materials needed for this layer
         const layerMaterials = this.analyzeLayerMaterials(blocks);
@@ -1938,7 +2070,7 @@ class SurvivalBuildCoordinator {
         }
 
         if (Object.keys(actuallyMissing).length > 0) {
-          this.bot.chat(`📦 Sammle Materialien für Schicht ${layerIndex + 1}...`);
+          console.log(`📦 Sammle Materialien für Schicht ${layerIndex + 1}...`);
 
           const procureResult = await this.procureMaterialsWithRetry(actuallyMissing, position);
 
@@ -1950,13 +2082,13 @@ class SurvivalBuildCoordinator {
               this.bot.chat(`Use !buildresume when materials are ready.`);
               return { success: false, reason: `Waiting for help: ${procureResult.failed}`, canResume: true, needsHelp: true };
             } else {
-              this.bot.chat(`❌ Konnte ${procureResult.failed} nicht beschaffen!`);
+              console.log(`❌ Konnte ${procureResult.failed} nicht beschaffen!`);
               this.pauseBuild('material_gathering_failed');
               return { success: false, reason: `Material gathering failed: ${procureResult.failed}`, canResume: true };
             }
           }
 
-          this.bot.chat(`✅ Materialien für Schicht ${layerIndex + 1} vollständig!`);
+          console.log(`✅ Materialien für Schicht ${layerIndex + 1} vollständig!`);
         }
 
         // Step 3: Build this layer
@@ -2010,7 +2142,7 @@ class SurvivalBuildCoordinator {
 
         // Progress report
         const progress = Math.round((blocksPlaced / this.buildState.totalBlocks) * 100);
-        this.bot.chat(`✅ Schicht ${layerIndex + 1}/${sortedLayers.length} fertig (${progress}% gesamt)`);
+        console.log(`✅ Schicht ${layerIndex + 1}/${sortedLayers.length} fertig (${progress}% gesamt)`);
 
         // Brief pause between layers
         if (layerY < sortedLayers[sortedLayers.length - 1]) {
@@ -2024,8 +2156,8 @@ class SurvivalBuildCoordinator {
 
       this.bot.chat(`✅ Bau abgeschlossen! ${blocksPlaced} Blöcke in ${duration}s (${successRate}%)`);
 
-      // Clear build state
-      this.buildState = null;
+      // Clear build state and delete file
+      this.deleteBuildState();
 
       return {
         success: true,
@@ -2056,6 +2188,7 @@ export class BuildingManager {
   constructor(bot, agent) {
     this.bot = bot;
     this.agent = agent;
+    this.autonomousMode = false; // NEU: Autonomer Build-Modus
 
     const schematicsPath = path.join(__dirname, '..', '..', 'schematics');
 
@@ -2088,6 +2221,9 @@ export class BuildingManager {
 
     // Setup interrupt handlers
     this.setupInterruptHandlers();
+
+    // Try to load saved build state from previous session
+    this.survivalCoordinator.loadBuildState();
   }
 
   setupInterruptHandlers() {
@@ -2204,7 +2340,18 @@ export class BuildingManager {
   }
 
   cancelBuild() {
-    return this.executor.cancel();
+    // Cancel executor build if running
+    const executorResult = this.executor.cancel();
+
+    // Also cancel and delete survival coordinator build state if exists
+    if (this.survivalCoordinator.buildState) {
+      const buildName = this.survivalCoordinator.buildState.schematicName;
+      this.survivalCoordinator.deleteBuildState();
+      this.bot.chat(`❌ Survival build cancelled: ${buildName}`);
+      return `Cancelled builds: ${executorResult} and survival build ${buildName}`;
+    }
+
+    return executorResult;
   }
 
   getSchematicInfo(name) {
@@ -2300,6 +2447,51 @@ export class BuildingManager {
   }
 
   /**
+   * Build autonomously without LLM interference
+   * @param {string} schematicName - Name of the schematic to build
+   * @param {Object} position - Optional build position
+   */
+  async buildAutonomous(schematicName, position = null) {
+    this.autonomousMode = true;
+
+    // Informiere LLM, dass autonomer Modus aktiv ist
+    if (this.agent && this.agent.history) {
+      await this.agent.history.add('system',
+        `AUTONOMOUS BUILD MODE ACTIVE: Building ${schematicName}. ` +
+        `Bot will handle everything automatically. ` +
+        `DO NOT send build commands. Only provide status updates when asked. ` +
+        `The build will complete or pause automatically.`
+      );
+    }
+
+    try {
+      // Verwende buildWithSurvivalMode für autonomes Bauen
+      const result = await this.buildWithSurvivalMode(schematicName, position);
+
+      // Nur finale Statusmeldung an LLM
+      if (this.agent && this.agent.history) {
+        await this.agent.history.add('system',
+          `BUILD COMPLETED: ${result}`
+        );
+      }
+
+      return result;
+    } catch (error) {
+      console.error('❌ Autonomous build error:', error);
+
+      if (this.agent && this.agent.history) {
+        await this.agent.history.add('system',
+          `BUILD ERROR: ${error.message}. Build may be paused and can be resumed.`
+        );
+      }
+
+      throw error;
+    } finally {
+      this.autonomousMode = false;
+    }
+  }
+
+  /**
    * Preview materials required for a build
    */
   async previewMaterials(schematicName) {
@@ -2349,6 +2541,11 @@ export class BuildingManager {
    * Resume interrupted build
    */
   async resumeBuild() {
+    // Try to load build state if not already in memory
+    if (!this.survivalCoordinator.buildState) {
+      this.survivalCoordinator.loadBuildState();
+    }
+
     if (!this.survivalCoordinator.buildState) {
       const msg = '❌ Kein gespeicherter Build-State gefunden. Nutze !build um neu zu starten.';
       this.bot.chat(msg);

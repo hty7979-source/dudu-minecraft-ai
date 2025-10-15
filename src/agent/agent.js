@@ -23,7 +23,7 @@ export class Agent {
     async start(load_mem=false, init_message=null, count_id=0) {
         this.last_sender = null;
         this.count_id = count_id;
-        
+
         // Initialize components with more detailed error handling
         this.actions = new ActionManager(this);
         this.prompter = new Prompter(this, settings.profile);
@@ -36,6 +36,13 @@ export class Agent {
         this.self_prompter = new SelfPrompter(this);
         this.building_manager = new BuildingManager(null, this); // Bot wird später gesetzt
         convoManager.initAgent(this);
+
+        // Wait for LMStudio chat model if needed
+        if (this.prompter.chat_model.constructor.name === 'LMStudio') {
+            console.log('⏳ Detected LMStudio chat model, checking server availability...');
+            await this.prompter.chat_model.waitForServer();
+        }
+
         await this.prompter.initExamples();
 
         // load mem first before doing task

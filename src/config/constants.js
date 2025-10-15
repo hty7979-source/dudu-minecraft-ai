@@ -19,6 +19,12 @@ export const TIMING = {
 
     // Code execution
     CODE_TIMEOUT_DEFAULT_MINS: -1, // -1 for no timeout
+
+    // LLM/LMStudio connection
+    LLM_STARTUP_WAIT_MS: 3000, // Initial wait before first LLM connection attempt
+    LLM_HEALTH_CHECK_TIMEOUT_MS: 2000, // Timeout for health check requests
+    LLM_MAX_STARTUP_RETRIES: 5, // Maximum retries when connecting to LLM on startup
+    LLM_RETRY_DELAY_MS: 1500, // Base delay between retries (will use exponential backoff)
 };
 
 // =============================================================================

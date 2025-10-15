@@ -357,10 +357,11 @@ const GATHERING_ACTIONS = [
                 return { name: name.trim(), count: parseInt(count) || 1 };
             });
 
+            console.log(`🤖 Starting smart collection: ${items} (strategy: ${strategy})`);
             agent.bot.chat(`🤖 Starting smart collection: ${items} (strategy: ${strategy})`);
 
             for (const request of itemRequests) {
-                agent.bot.chat(`🔍 Collecting ${request.count}x ${request.name}...`);
+                console.log(`🔍 Collecting ${request.count}x ${request.name}...`);
 
                 try {
                     const success = await smartCollect(
@@ -376,6 +377,7 @@ const GATHERING_ACTIONS = [
                         return `Failed to collect ${request.name}`;
                     }
 
+                    console.log(`✅ Collected ${request.count}x ${request.name}`);
                     agent.bot.chat(`✅ Collected ${request.count}x ${request.name}`);
                 } catch (error) {
                     console.error(`Error collecting ${request.name}:`, error);
@@ -487,9 +489,14 @@ const BUILDING_ACTIONS = [
                 return "❌ BuildingManager not initialized!";
             }
 
+            // Prüfe ob bereits ein Build läuft
+            if (agent.building_manager.survivalCoordinator?.buildState) {
+                return "Build läuft bereits. Nutze !buildstatus oder !buildresume.";
+            }
+
             try {
-                // Use new survival mode build system
-                const result = await agent.building_manager.buildWithSurvivalMode(name, null);
+                // Use autonomous build mode for better LLM integration
+                const result = await agent.building_manager.buildAutonomous(name, null);
                 return result;
             } catch (error) {
                 const errorMsg = `❌ Building failed: ${error.message}`;

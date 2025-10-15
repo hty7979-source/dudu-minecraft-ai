@@ -274,16 +274,20 @@ export function createCombatMode(execute, say) {
          */
         handleFleeing: async function(agent) {
             const bot = agent.bot;
-            
+
             if (!this.fleeMessageSent) {
                 say(agent, "Critical health! Retreating to safety!");
                 this.fleeMessageSent = true;
             }
-            
+
             await skills.avoidEnemies(bot, 15);
-            
-            // Try to eat if possible
-            await skills.eat(bot);
+
+            // Try to eat if possible - use consume instead of eat
+            try {
+                await skills.consume(bot, "");
+            } catch (error) {
+                console.log(`Could not consume food: ${error.message}`);
+            }
         },
         
         /**

@@ -10,6 +10,249 @@ import Vec3 from 'vec3';
 import pf from 'mineflayer-pathfinder';
 
 // ============================================================================
+// ITEM NAME VALIDATOR - Validates and corrects common item name mistakes
+// ============================================================================
+class ItemNameValidator {
+  constructor() {
+    // Common naming mistakes and their corrections
+    this.corrections = {
+      // Singular → Plural
+      'plank': 'planks',
+      'oak_plank': 'oak_planks',
+      'spruce_plank': 'spruce_planks',
+      'birch_plank': 'birch_planks',
+      'jungle_plank': 'jungle_planks',
+      'acacia_plank': 'acacia_planks',
+      'dark_oak_plank': 'dark_oak_planks',
+
+      // Common abbreviations
+      'wood': 'oak_log',
+      'stone': 'cobblestone',
+      'sword': 'wooden_sword',
+      'pickaxe': 'wooden_pickaxe',
+      'axe': 'wooden_axe',
+      'shovel': 'wooden_shovel',
+
+      // British vs American English
+      'armour': 'armor',
+      'colour': 'color',
+
+      // Common typos
+      'cobbblestone': 'cobblestone',
+      'diamon': 'diamond',
+      'woodden': 'wooden',
+      'iro': 'iron',
+    };
+  }
+
+  /**
+   * Validate and correct item name
+   * Returns corrected name or original if valid
+   */
+  validate(itemName) {
+    if (!itemName || typeof itemName !== 'string') {
+      return null;
+    }
+
+    const cleaned = itemName.trim().toLowerCase();
+
+    // Check if it's a known correction
+    if (this.corrections[cleaned]) {
+      const corrected = this.corrections[cleaned];
+      console.log(`🔄 Auto-corrected: "${itemName}" → "${corrected}"`);
+      return corrected;
+    }
+
+    // Try to get item ID from mcdata (validates existence)
+    try {
+      const itemId = mc.getItemId(cleaned);
+      if (itemId !== null && itemId !== undefined) {
+        return cleaned; // Valid item name
+      }
+    } catch (error) {
+      // Item doesn't exist, try fuzzy matching
+    }
+
+    // Fuzzy matching: Try adding 's' for plurals
+    if (!cleaned.endsWith('s')) {
+      try {
+        const pluralName = cleaned + 's';
+        const itemId = mc.getItemId(pluralName);
+        if (itemId !== null && itemId !== undefined) {
+          console.log(`🔄 Auto-corrected: "${itemName}" → "${pluralName}" (added plural 's')`);
+          return pluralName;
+        }
+      } catch (error) {
+        // Still doesn't exist
+      }
+    }
+
+    // Fuzzy matching: Try removing 's' for singulars
+    if (cleaned.endsWith('s') && cleaned.length > 2) {
+      try {
+        const singularName = cleaned.slice(0, -1);
+        const itemId = mc.getItemId(singularName);
+        if (itemId !== null && itemId !== undefined) {
+          console.log(`🔄 Auto-corrected: "${itemName}" → "${singularName}" (removed plural 's')`);
+          return singularName;
+        }
+      } catch (error) {
+        // Still doesn't exist
+      }
+    }
+
+    // No valid match found
+    console.log(`⚠️ Unknown item name: "${itemName}"`);
+    return cleaned; // Return as-is, let caller handle the error
+  }
+
+  /**
+   * Validate and correct item name, throw error if invalid
+   */
+  validateStrict(itemName) {
+    const validated = this.validate(itemName);
+
+    // Verify the validated name exists in mcdata
+    try {
+      const itemId = mc.getItemId(validated);
+      if (itemId === null || itemId === undefined) {
+        throw new Error(`Invalid item name: "${itemName}". No such item exists in Minecraft.`);
+      }
+    } catch (error) {
+      throw new Error(`Invalid item name: "${itemName}". ${error.message}`);
+    }
+
+    return validated;
+  }
+}
+
+// Global validator instance
+const itemValidator = new ItemNameValidator();
+
+// ============================================================================
+// CHAT RATE LIMITER - Prevents spam on Vanilla servers
+// ============================================================================
+class ChatRateLimiter {
+  constructor(maxMessages = 3, timeWindowMs = 5000) {
+    this.maxMessages = maxMessages;
+    this.timeWindowMs = timeWindowMs;
+    this.messageTimestamps = [];
+    this.messageQueue = [];
+    this.isProcessing = false;
+  }
+
+  /**
+   * Check if we can send a message now (within rate limit)
+   */
+  canSendNow() {
+    const now = Date.now();
+    // Remove timestamps older than time window
+    this.messageTimestamps = this.messageTimestamps.filter(
+      timestamp => now - timestamp < this.timeWindowMs
+    );
+    return this.messageTimestamps.length < this.maxMessages;
+  }
+
+  /**
+   * Send message with rate limiting
+   * @param {Object} bot - Mineflayer bot instance
+   * @param {string} message - Message to send
+   * @param {string} priority - 'high', 'normal', 'low'
+   */
+  async sendMessage(bot, message, priority = 'normal') {
+    if (!bot || !message || message.trim().length === 0) {
+      return false;
+    }
+
+    const now = Date.now();
+
+    if (this.canSendNow()) {
+      // Can send immediately
+      bot.chat(message);
+      this.messageTimestamps.push(now);
+      return true;
+    }
+
+    // Queue the message if priority is high
+    if (priority === 'high') {
+      this.messageQueue.push({ message, priority, timestamp: now });
+      this.processQueue(bot);
+      return false; // Queued, not sent yet
+    }
+
+    // Drop low-priority messages when rate limit is reached
+    console.log(`⚠️ Rate limit reached, dropping message: "${message.substring(0, 50)}..."`);
+    return false;
+  }
+
+  /**
+   * Process message queue with delays
+   */
+  async processQueue(bot) {
+    if (this.isProcessing || this.messageQueue.length === 0) {
+      return;
+    }
+
+    this.isProcessing = true;
+
+    while (this.messageQueue.length > 0) {
+      // Wait until we can send
+      while (!this.canSendNow()) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      const { message } = this.messageQueue.shift();
+      bot.chat(message);
+      this.messageTimestamps.push(Date.now());
+    }
+
+    this.isProcessing = false;
+  }
+
+  /**
+   * Smart chat wrapper - consolidates multiple messages
+   * @param {Object} bot - Mineflayer bot instance
+   * @param {string} message - Message to send
+   * @param {string} priority - Message priority
+   */
+  smartChat(bot, message, priority = 'normal') {
+    // Don't send debug messages to chat
+    if (message.includes('DEBUG') || message.includes('🗃️') || message.includes('📦 Extracting')) {
+      console.log(message); // Log locally only
+      return false;
+    }
+
+    // Consolidate repeated similar messages
+    const lastMessage = this.messageQueue[this.messageQueue.length - 1];
+    if (lastMessage && this.isSimilar(lastMessage.message, message)) {
+      console.log(`⚠️ Skipping duplicate message: "${message.substring(0, 50)}..."`);
+      return false;
+    }
+
+    return this.sendMessage(bot, message, priority);
+  }
+
+  /**
+   * Check if two messages are similar (to avoid spam)
+   */
+  isSimilar(msg1, msg2) {
+    const normalize = (str) => str.toLowerCase().replace(/[0-9]/g, 'X').trim();
+    return normalize(msg1) === normalize(msg2);
+  }
+
+  /**
+   * Clear all queued messages and reset
+   */
+  clear() {
+    this.messageQueue = [];
+    this.messageTimestamps = [];
+  }
+}
+
+// Global rate limiter instance
+const chatLimiter = new ChatRateLimiter(3, 5000); // 3 messages per 5 seconds (Vanilla-safe)
+
+// ============================================================================
 // TOOL MANAGER - Intelligente Werkzeug-Verwaltung
 // ============================================================================
 class ToolManager {
@@ -669,49 +912,63 @@ export class SmartCraftingManager {
   }
 
   async craftIntelligently(itemName, quantity = 1) {
-    console.log(`🎯 Smart crafting: ${quantity}x ${itemName}`);
-    
+    // Validate and correct item name
+    const validatedName = itemValidator.validate(itemName);
+    if (!validatedName) {
+      console.log(`❌ Invalid item name: "${itemName}"`);
+      chatLimiter.smartChat(this.bot, `❌ Invalid item: "${itemName}"`, 'high');
+      return false;
+    }
+
+    console.log(`🎯 Smart crafting: ${quantity}x ${validatedName}`);
+
     const inventory = world.getInventoryCounts(this.bot);
-    const alreadyHave = inventory[itemName] || 0;
-    
+    const alreadyHave = inventory[validatedName] || 0;
+
     if (alreadyHave >= quantity) {
-      console.log(`✅ Already have ${alreadyHave}x ${itemName}`);
-      this.bot.chat(`✅ Already have enough ${itemName}!`);
+      console.log(`✅ Already have ${alreadyHave}x ${validatedName}`);
+      chatLimiter.smartChat(this.bot, `✅ Have ${validatedName}!`, 'low');
       return true;
     }
-    
+
     const stillNeed = quantity - alreadyHave;
-    
+
     try {
       // Phase 1: Analyze materials
-      const analysis = this.materialAnalyzer.analyzeRecipe(itemName, stillNeed);
-      
+      const analysis = this.materialAnalyzer.analyzeRecipe(validatedName, stillNeed);
+
       if (!analysis.success) {
-        console.log(`❌ Cannot craft ${itemName}: ${analysis.reason}`);
+        console.log(`❌ Cannot craft ${validatedName}: ${analysis.reason}`);
         return false;
       }
-      
+
       // Phase 2: Gather missing materials
       let materials = analysis.missing;
       materials = this.materialAnalyzer.substituteWoodMaterials(materials, inventory);
-      
+
       for (const [material, needed] of Object.entries(materials)) {
-        const success = await this.resourceGatherer.gather(material, needed, { checkChests: true });
+        // Validate material names as well
+        const validatedMaterial = itemValidator.validate(material);
+        if (!validatedMaterial) {
+          console.log(`⚠️ Skipping invalid material: "${material}"`);
+          continue;
+        }
+        const success = await this.resourceGatherer.gather(validatedMaterial, needed, { checkChests: true });
         if (!success) {
-          this.bot.chat(`❌ Could not gather ${material}`);
+          chatLimiter.smartChat(this.bot, `❌ No ${validatedMaterial}`, 'high');
           return false;
         }
       }
-      
+
       // Phase 3: Execute crafting
-      const success = await this.craftingExecutor.craft(itemName, stillNeed);
-      
+      const success = await this.craftingExecutor.craft(validatedName, stillNeed);
+
       if (success) {
-        this.bot.chat(`✅ Successfully crafted ${quantity}x ${itemName}!`);
+        chatLimiter.smartChat(this.bot, `✅ Crafted ${quantity}x ${validatedName}!`, 'high');
       }
-      
+
       return success;
-      
+
     } catch (error) {
       console.log(`❌ Crafting failed: ${error.message}`);
       return false;
@@ -719,7 +976,15 @@ export class SmartCraftingManager {
   }
 
   async collectIntelligently(blockType, quantity = 1, options = {}) {
-    return await this.resourceGatherer.gather(blockType, quantity, options);
+    // Validate and correct block/item name
+    const validatedName = itemValidator.validate(blockType);
+    if (!validatedName) {
+      console.log(`❌ Invalid block/item name: "${blockType}"`);
+      chatLimiter.smartChat(this.bot, `❌ Invalid block: "${blockType}"`, 'high');
+      return false;
+    }
+
+    return await this.resourceGatherer.gather(validatedName, quantity, options);
   }
 }
 
