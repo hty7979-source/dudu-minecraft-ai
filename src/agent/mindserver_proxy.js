@@ -1,7 +1,7 @@
 import { io } from 'socket.io-client';
 import convoManager from './conversation.js';
 import { setSettings } from './settings.js';
-import { getFullState } from './library/full_state.js';
+import { getFullState } from './library/utils/state.js';
 
 // agent's individual connection to the mindserver
 // always connect to localhost

@@ -1,4 +1,4 @@
-import { getPosition } from "../library/world.js";
+import { getPosition } from "../library/utils/world.js";
 
 export class CookingTaskInitiator {
     constructor(data, bot) {

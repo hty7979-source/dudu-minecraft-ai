@@ -3,9 +3,9 @@
  * Modular refactored for better maintainability
  */
 
-import * as mc from "../../utils/mcdata.js";
-import * as world from "./world.js";
-import * as skills from "./skills.js";
+import * as mc from "../../../utils/mcdata.js";
+import * as world from "../utils/world.js";
+import * as skills from "../skills.js";
 import Vec3 from 'vec3';
 import pf from 'mineflayer-pathfinder';
 

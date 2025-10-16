@@ -7,7 +7,7 @@ import {
     getBlockAtPosition,
     getFirstBlockAboveHead
 } from "./world.js";
-import convoManager from '../conversation.js';
+import convoManager from '../../conversation.js';
 
 export function getFullState(agent) {
     const bot = agent.bot;

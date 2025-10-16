@@ -1,4 +1,4 @@
-import * as world from '../library/world.js';
+import * as world from '../library/utils/world.js';
 import * as mc from '../../utils/mcdata.js';
 
 

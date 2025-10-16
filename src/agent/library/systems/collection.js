@@ -16,11 +16,11 @@
  * @date 8. Oktober 2025
  */
 
-import * as world from './world.js';
-import * as mc from '../../utils/mcdata.js';
+import * as world from '../utils/world.js';
+import * as mc from '../../../utils/mcdata.js';
 import { Vec3 } from 'vec3';
 import * as pf from 'mineflayer-pathfinder';
-import { SmartCraftingManager } from './smart_crafting.js';
+import { SmartCraftingManager } from './crafting_system.js';
 
 export class SmartCollectEnhanced {
     constructor(bot, skillsFunctions = null) {

@@ -59,6 +59,31 @@ export class BuildingManager {
       if (this.survivalCoordinator.buildState && this.bot.health < 6) {
         console.log('⚠️ Low health detected during build');
         this.survivalCoordinator.pauseBuild('low_health');
+
+        // Inform agent to get food urgently
+        if (this.agent && this.agent.history) {
+          const foodItems = this.bot.inventory.items().filter(item =>
+            item.name.includes('bread') || item.name.includes('apple') ||
+            item.name.includes('meat') || item.name.includes('steak') ||
+            item.name.includes('porkchop') || item.name.includes('chicken') ||
+            item.name.includes('fish') || item.name.includes('salmon') ||
+            item.name.includes('carrot') || item.name.includes('potato')
+          );
+
+          if (foodItems.length === 0) {
+            this.agent.history.add('system',
+              '🚨 URGENT: Health is very low (below 3 hearts) and NO food in inventory! ' +
+              'Build has been paused. You MUST immediately collect or craft food before continuing. ' +
+              'Use !smartcollect for food items (bread, apples, meat, carrots, potatoes). ' +
+              'After eating, use !buildresume to continue the build.'
+            );
+          } else {
+            this.agent.history.add('system',
+              `⚠️ Health is low (${(this.bot.health/2).toFixed(1)} hearts). ` +
+              `Build paused. You have ${foodItems.length} food items. Eat immediately, then use !buildresume.`
+            );
+          }
+        }
       }
     });
 
@@ -68,6 +93,15 @@ export class BuildingManager {
         console.log('💀 Death detected, saving build state');
         this.survivalCoordinator.pauseBuild('death');
         this.survivalCoordinator.saveBuildState();
+
+        // Inform agent about death
+        if (this.agent && this.agent.history) {
+          this.agent.history.add('system',
+            '💀 You died during the build! Build state has been saved. ' +
+            'After respawning, make sure to: 1) Get food and tools, 2) Return to build location, ' +
+            '3) Use !buildresume to continue where you left off.'
+          );
+        }
       }
     });
 
@@ -77,6 +111,15 @@ export class BuildingManager {
         if (this.bot.health < 10) {
           console.log('⚔️ Taking damage during build');
           this.survivalCoordinator.pauseBuild('combat');
+
+          // Inform agent about combat
+          if (this.agent && this.agent.history) {
+            this.agent.history.add('system',
+              '⚔️ Under attack! Build has been paused for safety. ' +
+              'Defend yourself or flee to a safe location. ' +
+              'Once safe and healed, use !buildresume to continue building.'
+            );
+          }
         }
       }
     });

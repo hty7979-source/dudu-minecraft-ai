@@ -1,7 +1,7 @@
 import { writeFile, readFile, mkdirSync } from 'fs';
-import { makeCompartment, lockdown } from './library/lockdown.js';
+import { makeCompartment, lockdown } from './library/utils/lockdown.js';
 import * as skills from './library/skills.js';
-import * as world from './library/world.js';
+import * as world from './library/utils/world.js';
 import { Vec3 } from 'vec3';
 import {ESLint} from "eslint";
 

@@ -9,7 +9,7 @@
  */
 
 import * as skills from '../library/skills.js';
-import * as world from '../library/world.js';
+import * as world from '../library/utils/world.js';
 import * as mc from '../../utils/mcdata.js';
 import pf from 'mineflayer-pathfinder';
 

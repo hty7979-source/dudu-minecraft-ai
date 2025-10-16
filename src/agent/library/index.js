@@ -1,5 +1,14 @@
 import * as skills from './skills.js';
-import * as world from './world.js';
+import * as world from './utils/world.js';
+
+// Export new organized structure
+export * from './systems/collection.js';
+export * from './systems/mining.js';
+export * from './systems/crafting_system.js';
+export * from './systems/task_manager.js';
+export * from './utils/world.js';
+export * from './utils/state.js';
+export * from './utils/lockdown.js';
 
 
 export function docHelper(functions, module_name) {

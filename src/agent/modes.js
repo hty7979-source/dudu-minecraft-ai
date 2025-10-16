@@ -1,5 +1,5 @@
 import * as skills from './library/skills.js';
-import * as world from './library/world.js';
+import * as world from './library/utils/world.js';
 import * as mc from '../utils/mcdata.js';
 import settings from './settings.js'
 import convoManager from './conversation.js';
