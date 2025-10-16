@@ -6,6 +6,7 @@
 import { handleEnglishTranslation } from '../utils/translator.js';
 import { COMBAT, TIME_OF_DAY, TIMING } from '../config/constants.js';
 import convoManager from './conversation.js';
+import { serverProxy } from './mindserver_proxy.js';
 import settings from './settings.js';
 
 /**
@@ -52,7 +53,7 @@ export async function setupEventHandlers(agent, save_data, init_message) {
     agent.bot.on('whisper', respondFunc);
 
     agent.bot.on('chat', (username, message) => {
-        if (convoManager.getNumOtherAgents() > 0) return;
+        if (serverProxy.getNumOtherAgents() > 0) return;
         // Only respond to open chat messages when there are no other agents
         respondFunc(username, message);
     });

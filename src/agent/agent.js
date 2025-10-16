@@ -16,8 +16,9 @@ import { serverProxy, sendOutputToServer } from './mindserver_proxy.js';
 import settings from './settings.js';
 import { Task } from './tasks/tasks.js';
 import { speak } from './speak.js';
-import { BuildingManager } from './building_manager.js';
-import { TIMING, CONTEXT, BOT_BEHAVIOR, COMBAT, EXIT_CODES, TIME_OF_DAY } from '../config/constants.js';
+import { BuildingManager } from '../systems/building/index.js';
+import { TIMING, CONTEXT, BOT_BEHAVIOR, EXIT_CODES } from '../config/constants.js';
+import { setupEventHandlers, setupAllEvents } from './event_handlers.js';
 
 export class Agent {
     async start(load_mem=false, init_message=null, count_id=0) {
@@ -124,48 +125,6 @@ export class Agent {
     }
 
     async _setupEventHandlers(save_data, init_message) {
-        const ignore_messages = [
-            "Set own game mode to",
-            "Set the time to",
-            "Set the difficulty to",
-            "Teleported ",
-            "Set the weather to",
-            "Gamerule "
-        ];
-        
-        const respondFunc = async (username, message) => {
-            if (message === "") return;
-            if (username === this.name) return;
-            if (settings.only_chat_with.length > 0 && !settings.only_chat_with.includes(username)) return;
-            try {
-                if (ignore_messages.some((m) => message.startsWith(m))) return;
-
-                this.shut_up = false;
-
-                console.log(this.name, 'received message from', username, ':', message);
-
-                if (convoManager.isOtherAgent(username)) {
-                    console.warn('received whisper from other bot??')
-                }
-                else {
-                    let translation = await handleEnglishTranslation(message);
-                    this.handleMessage(username, translation);
-                }
-            } catch (error) {
-                console.error('Error handling message:', error);
-            }
-        }
-
-		this.respondFunc = respondFunc;
-
-        this.bot.on('whisper', respondFunc);
-        
-        this.bot.on('chat', (username, message) => {
-            if (serverProxy.getNumOtherAgents() > 0) return;
-            // only respond to open chat messages when there are no other agents
-            respondFunc(username, message);
-        });
-
         // Set up auto-eat
         this.bot.autoEat.options = {
             priority: BOT_BEHAVIOR.AUTO_EAT.PRIORITY,
@@ -173,28 +132,8 @@ export class Agent {
             bannedFood: BOT_BEHAVIOR.AUTO_EAT.BANNED_FOOD
         };
 
-        if (save_data?.self_prompt) {
-            if (init_message) {
-                this.history.add('system', init_message);
-            }
-            await this.self_prompter.handleLoad(save_data.self_prompt, save_data.self_prompting_state);
-        }
-        if (save_data?.last_sender) {
-            this.last_sender = save_data.last_sender;
-            if (convoManager.otherAgentInGame(this.last_sender)) {
-                const msg_package = {
-                    message: `You have restarted and this message is auto-generated. Continue the conversation with me.`,
-                    start: true
-                };
-                convoManager.receiveFromBot(this.last_sender, msg_package);
-            }
-        }
-        else if (init_message) {
-            await this.handleMessage('system', init_message, 2);
-        }
-        else {
-            this.openChat("Hello world! I am "+this.name);
-        }
+        // Delegate to event_handlers module
+        await setupEventHandlers(this, save_data, init_message);
     }
 
     checkAllPlayersPresent() {
@@ -407,117 +346,8 @@ export class Agent {
     }
 
     startEvents() {
-        // Custom time-based events
-        this.bot.on('time', () => {
-            if (this.bot.time.timeOfDay == TIME_OF_DAY.SUNRISE)
-                this.bot.emit('sunrise');
-            else if (this.bot.time.timeOfDay == TIME_OF_DAY.NOON)
-                this.bot.emit('noon');
-            else if (this.bot.time.timeOfDay == TIME_OF_DAY.SUNSET)
-                this.bot.emit('sunset');
-            else if (this.bot.time.timeOfDay == TIME_OF_DAY.MIDNIGHT)
-                this.bot.emit('midnight');
-        });
-
-        let prev_health = this.bot.health;
-        this.bot.lastDamageTime = 0;
-        this.bot.lastDamageTaken = 0;
-        // Funktion für Combat-Aktivierung bei jeder Art von Schaden
-        const activateCombatOnDamage = (damageAmount, damageSource = 'unknown') => {
-            if (this.bot.modes && this.bot.modes.self_defense) {
-                if (!this.bot.modes.self_defense.active) {
-                    console.log(`[COMBAT] ${damageSource} Schaden erhalten (${damageAmount}) - Kampfmodus aktiviert!`);
-                    this.bot.chat(`🛡️ Unter Angriff! Kampfmodus aktiviert (${damageAmount} Schaden, ${damageSource})`);
-                    this.bot.modes.self_defense.on = true;
-                    this.bot.modes.self_defense.active = true;
-                    // Sofortiger Scan nach Aktivierung
-                    this.bot.modes.self_defense.lastScan = 0;
-                }
-            }
-        };
-
-        this.bot.on('health', () => {
-            if (this.bot.health < prev_health) {
-                this.bot.lastDamageTime = Date.now();
-                this.bot.lastDamageTaken = prev_health - this.bot.health;
-                
-                // PHASE 1: Automatische Kampfmodus-Aktivierung bei Health-Änderung
-                activateCombatOnDamage(this.bot.lastDamageTaken, 'Health');
-            }
-            
-            // Health monitoring for combat mode
-            if (this.bot.modes && this.bot.modes.self_defense) {
-                if (this.bot.health < COMBAT.CRITICAL_HEALTH && this.bot.modes.self_defense.active) {
-                    // Critical state is already handled in the mode itself
-                }
-
-                if (this.bot.health > COMBAT.SAFE_HEALTH && this.bot.modes.self_defense.fleeMessageSent) {
-                    this.bot.modes.self_defense.fleeMessageSent = false;
-                }
-            }
-            
-            prev_health = this.bot.health;
-        });
-
-        // SICHERE Damage-Events (ohne problematische Packet-Handler)
-        
-        // Pfeilschaden detection - aber nur die sicheren Events
-        this.bot.on('entityHurt', (entity) => {
-            if (entity === this.bot.entity) {
-                if (this.bot.modes && this.bot.modes.self_defense && this.bot.modes.self_defense.debugMode) {
-                    console.log(`[COMBAT] EntityHurt event detected for bot`);
-                }
-                activateCombatOnDamage(1, 'Projectile');
-            }
-        });
-
-        // Death Events (für Reset)
-        this.bot.on('death', () => {
-            console.log(`[COMBAT] Death event - resetting combat mode`);
-            if (this.bot.modes && this.bot.modes.self_defense) {
-                this.bot.modes.self_defense.active = false; // Reset bei Tod
-            }
-        });
-
-        // Logging callbacks
-        this.bot.on('error' , (err) => {
-            console.error('Error event!', err);
-        });
-        this.bot.on('end', (reason) => {
-            console.warn('Bot disconnected! Killing agent process.', reason)
-            this.cleanKill('Bot disconnected! Killing agent process.');
-        });
-        this.bot.on('death', () => {
-            this.actions.cancelResume();
-            this.actions.stop();
-        });
-        this.bot.on('kicked', (reason) => {
-            console.warn('Bot kicked!', reason);
-            this.cleanKill('Bot kicked! Killing agent process.');
-        });
-        this.bot.on('messagestr', async (message, _, jsonMsg) => {
-            if (jsonMsg.translate && jsonMsg.translate.startsWith('death') && message.startsWith(this.name)) {
-                console.log('Agent died: ', message);
-                let death_pos = this.bot.entity.position;
-                this.memory_bank.rememberPlace('last_death_position', death_pos.x, death_pos.y, death_pos.z);
-                let death_pos_text = null;
-                if (death_pos) {
-                    death_pos_text = `x: ${death_pos.x.toFixed(2)}, y: ${death_pos.y.toFixed(2)}, z: ${death_pos.x.toFixed(2)}`;
-                }
-                let dimention = this.bot.game.dimension;
-                this.handleMessage('system', `You died at position ${death_pos_text || "unknown"} in the ${dimention} dimension with the final message: '${message}'. Your place of death is saved as 'last_death_position' if you want to return. Previous actions were stopped and you have respawned.`);
-            }
-        });
-        this.bot.on('idle', () => {
-            this.bot.clearControlStates();
-            this.bot.pathfinder.stop(); // Clear any lingering pathfinder
-            this.bot.modes.unPauseAll();
-            setTimeout(() => {
-                if (this.isIdle()) {
-                    this.actions.resumeAction();
-                }
-            }, TIMING.IDLE_RESUME_DELAY_MS);
-        });
+        // Setup all event handlers via event_handlers module
+        setupAllEvents(this);
 
         // Init NPC controller
         this.npc.init();
