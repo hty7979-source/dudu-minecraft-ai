@@ -350,7 +350,7 @@ const GATHERING_ACTIONS = [
         },
         perform: runAsAction(async function(agent, items, strategy = 'auto') {
             // Import smart crafting system
-            const { smartCollect } = await import('../library/smart_crafting.js');
+            const { smartCollect } = await import('../library/systems/crafting_system.js');
 
             const itemRequests = items.split(',').map(item => {
                 const [name, count] = item.trim().split(':');
@@ -410,7 +410,7 @@ const GATHERING_ACTIONS = [
         },
         perform: runAsAction(async function(agent, item, quantity = 1, auto_gather = true) {
             // Import smart crafting system
-            const { smartCraft } = await import('../library/smart_crafting.js');
+            const { smartCraft } = await import('../library/systems/crafting_system.js');
 
             agent.bot.chat(`🔨 Smart crafting ${quantity}x ${item}${auto_gather ? ' (auto-gathering materials)' : ''}...`);
 
