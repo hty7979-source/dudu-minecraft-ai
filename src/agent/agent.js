@@ -51,12 +51,6 @@ export class Agent {
         this.building_manager = new BuildingManager(null, this); // Bot wird später gesetzt
         convoManager.initAgent(this);
 
-        // Wait for LMStudio chat model if needed
-        if (this.prompter.chat_model.constructor.name === 'LMStudio') {
-            console.log('⏳ Detected LMStudio chat model, checking server availability...');
-            await this.prompter.chat_model.waitForServer();
-        }
-
         await this.prompter.initExamples();
 
         // load mem first before doing task

@@ -110,12 +110,6 @@ export class Prompter {
 
     async initExamples() {
         try {
-            // Wait for LMStudio server if embedding model is LMStudio
-            if (this.embedding_model.constructor.name === 'LMStudio') {
-                console.log('⏳ Detected LMStudio embedding model, checking server availability...');
-                await this.embedding_model.waitForServer();
-            }
-
             this.convo_examples = new Examples(this.embedding_model, settings.num_examples);
             this.coding_examples = new Examples(this.embedding_model, settings.num_examples);
 

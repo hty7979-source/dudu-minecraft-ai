@@ -517,8 +517,26 @@ export class IdleTaskGenerator {
             console.log('✅ Phase 1: All materials already available!\n');
         }
 
-        // PHASE 3: Craft Tools
-        console.log('🔨 Phase 2: Crafting tools...');
+        // PHASE 3: Craft intermediate materials first
+        console.log('🔨 Phase 2: Crafting intermediate materials...');
+
+        // Craft planks from logs if needed
+        const inventory = this.materialPlanner.getCurrentInventory();
+        const planksNeeded = 8; // 2+3+3 for sword, axe, pickaxe
+        const sticksNeeded = 5; // 1+2+2 for sword, axe, pickaxe
+
+        if ((inventory['oak_planks'] || 0) < planksNeeded) {
+            console.log('  → Crafting oak_planks...');
+            await skills.craftRecipe(agent.bot, 'oak_planks', Math.ceil(planksNeeded / 4)); // 4 planks per log
+        }
+
+        if ((inventory['stick'] || 0) < sticksNeeded) {
+            console.log('  → Crafting sticks...');
+            await skills.craftRecipe(agent.bot, 'stick', Math.ceil(sticksNeeded / 4)); // 4 sticks per 2 planks
+        }
+
+        // PHASE 4: Craft Tools
+        console.log('🔨 Phase 3: Crafting tools...');
 
         const tools = [
             { name: 'wooden_sword', display: 'Wooden Sword' },
@@ -527,10 +545,8 @@ export class IdleTaskGenerator {
         ];
 
         for (const tool of tools) {
-            const success = await smartCraft(agent.bot, tool.name, 1, skills);
-            if (!success) {
-                throw new Error(`Failed to craft ${tool.name}`);
-            }
+            console.log(`  → Crafting ${tool.display}...`);
+            await skills.craftRecipe(agent.bot, tool.name, 1);
             console.log(`  ✓ ${tool.display} crafted`);
         }
 
@@ -582,8 +598,24 @@ export class IdleTaskGenerator {
             console.log('✅ Phase 1: All materials already available!\n');
         }
 
-        // PHASE 3: Craft Tools + Furnace
-        console.log('🔨 Phase 2: Crafting tools & utilities...');
+        // PHASE 3: Craft intermediate materials first
+        console.log('🔨 Phase 2: Crafting intermediate materials...');
+
+        const inventory = this.materialPlanner.getCurrentInventory();
+        const sticksNeeded = 5; // 1+2+2 for sword, axe, pickaxe
+
+        // Craft sticks from planks/logs if needed
+        if ((inventory['stick'] || 0) < sticksNeeded) {
+            console.log('  → Crafting sticks...');
+            // First ensure we have planks
+            if ((inventory['oak_planks'] || 0) < 2) {
+                await skills.craftRecipe(agent.bot, 'oak_planks', 1);
+            }
+            await skills.craftRecipe(agent.bot, 'stick', Math.ceil(sticksNeeded / 4)); // 4 sticks per 2 planks
+        }
+
+        // PHASE 4: Craft Tools + Furnace
+        console.log('🔨 Phase 3: Crafting tools & utilities...');
 
         const items = [
             { name: 'stone_sword', display: 'Stone Sword' },
@@ -593,10 +625,8 @@ export class IdleTaskGenerator {
         ];
 
         for (const item of items) {
-            const success = await smartCraft(agent.bot, item.name, 1, skills);
-            if (!success) {
-                throw new Error(`Failed to craft ${item.name}`);
-            }
+            console.log(`  → Crafting ${item.display}...`);
+            await skills.craftRecipe(agent.bot, item.name, 1);
             console.log(`  ✓ ${item.display} crafted`);
         }
 
@@ -645,8 +675,24 @@ export class IdleTaskGenerator {
             console.log('✅ Phase 1: All materials already available!\n');
         }
 
-        // PHASE 3: Craft Iron Tools
-        console.log('🔨 Phase 2: Crafting iron tools...');
+        // PHASE 3: Craft intermediate materials first
+        console.log('🔨 Phase 2: Crafting intermediate materials...');
+
+        const inventory = this.materialPlanner.getCurrentInventory();
+        const sticksNeeded = 5; // 1+2+2 for sword, axe, pickaxe
+
+        // Craft sticks from planks/logs if needed
+        if ((inventory['stick'] || 0) < sticksNeeded) {
+            console.log('  → Crafting sticks...');
+            // First ensure we have planks
+            if ((inventory['oak_planks'] || 0) < 2) {
+                await skills.craftRecipe(agent.bot, 'oak_planks', 1);
+            }
+            await skills.craftRecipe(agent.bot, 'stick', Math.ceil(sticksNeeded / 4)); // 4 sticks per 2 planks
+        }
+
+        // PHASE 4: Craft Iron Tools
+        console.log('🔨 Phase 3: Crafting iron tools...');
 
         const tools = [
             { name: 'iron_sword', display: 'Iron Sword' },
@@ -655,10 +701,8 @@ export class IdleTaskGenerator {
         ];
 
         for (const tool of tools) {
-            const success = await smartCraft(agent.bot, tool.name, 1, skills);
-            if (!success) {
-                throw new Error(`Failed to craft ${tool.name}`);
-            }
+            console.log(`  → Crafting ${tool.display}...`);
+            await skills.craftRecipe(agent.bot, tool.name, 1);
             console.log(`  ✓ ${tool.display} crafted`);
         }
 

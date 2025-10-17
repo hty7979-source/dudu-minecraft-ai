@@ -262,13 +262,27 @@ export class ContextualMemory {
     updateInventoryStatus(bot) {
         const items = bot.inventory.items();
 
-        // Food count
+        // Food count - erweitert um alle essbaren Items inkl. Pilze
         this.inventory.foodCount = items.filter(i =>
+            // Gekochtes Essen
             i.name.includes('bread') || i.name.includes('cooked') ||
+            i.name.includes('baked') || i.name === 'steak' ||
+            // Rohes Fleisch
+            i.name.includes('beef') || i.name.includes('porkchop') ||
+            i.name.includes('chicken') || i.name.includes('mutton') ||
+            i.name.includes('rabbit') ||
+            // Fisch
+            i.name.includes('fish') || i.name.includes('cod') || i.name.includes('salmon') ||
+            // Obst & Gemüse
             i.name.includes('apple') || i.name.includes('carrot') ||
-            i.name.includes('potato') || i.name.includes('beef') ||
-            i.name.includes('porkchop') || i.name.includes('chicken') ||
-            i.name.includes('mutton') || i.name.includes('fish')
+            i.name.includes('potato') || i.name.includes('beetroot') ||
+            i.name.includes('melon') || i.name.includes('berry') ||
+            // Pilze & Suppen (wichtig für Pilzsteak!)
+            i.name.includes('mushroom') || i.name.includes('stew') ||
+            i.name.includes('soup') ||
+            // Sonstiges
+            i.name.includes('golden_apple') || i.name.includes('honey') ||
+            i.name === 'cookie' || i.name === 'pumpkin_pie'
         ).reduce((sum, item) => sum + item.count, 0);
 
         // Torches

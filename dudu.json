@@ -1,8 +1,8 @@
 {
     "name": "Dudu",
-    "model": "lmstudio/openai/gpt-oss-20b",
-    "embedding": "lmstudio",
-    "max_tokens": 4096,
+    "model": "lmstudio/qwen/qwen3-8b",
+    "embedding": "lmstudio/text-embedding-embeddinggemma-300m",
+	"max_tokens": 8096,
     "temperature": 0.7,
     "language": "english",
     "conversation_examples": [
