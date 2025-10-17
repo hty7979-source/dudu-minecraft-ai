@@ -8,6 +8,10 @@ import { containsCommand, commandExists, executeCommand, truncCommandMessage, is
 import { ActionManager } from './action_manager.js';
 import { NPCContoller } from './npc/controller.js';
 import { MemoryBank } from './memory_bank.js';
+import { ContextualMemory } from './contextual_memory.js';
+import { TaskQueueManager } from './task_queue_manager.js';
+import { IdleTaskGenerator } from './idle_task_generator.js';
+import { DecisionEngine } from './decision_engine.js';
 import { SelfPrompter } from './self_prompter.js';
 import convoManager from './conversation.js';
 import { handleTranslation, handleEnglishTranslation } from '../utils/translator.js';
@@ -33,7 +37,16 @@ export class Agent {
         this.history = new History(this);
         this.coder = new Coder(this);
         this.npc = new NPCContoller(this);
-        this.memory_bank = new MemoryBank();
+
+        // Memory systems
+        this.memory_bank = new MemoryBank(); // Legacy support
+        this.contextual_memory = new ContextualMemory(); // New contextual memory
+
+        // Task and decision systems
+        this.taskQueue = new TaskQueueManager(this);
+        this.idleTaskGenerator = new IdleTaskGenerator(this);
+        this.decisionEngine = new DecisionEngine(this);
+
         this.self_prompter = new SelfPrompter(this);
         this.building_manager = new BuildingManager(null, this); // Bot wird später gesetzt
         convoManager.initAgent(this);
@@ -93,9 +106,19 @@ export class Agent {
                 this.building_manager.initializeComponents();
                 console.log('🏗️ BuildingManager initialized with bot');
 
+                // Initialize contextual memory with homepoint
+                const spawnPos = this.bot.entity.position;
+                this.contextual_memory.setHomepoint(
+                    Math.floor(spawnPos.x),
+                    Math.floor(spawnPos.y),
+                    Math.floor(spawnPos.z)
+                );
+                this.contextual_memory.startNewSession();
+                console.log('🧠 ContextualMemory initialized with homepoint');
+
                 // Wait for bot stats to be initialized
                 await new Promise((resolve) => setTimeout(resolve, TIMING.SPAWN_WAIT_MS));
-                
+
                 console.log(`${this.name} spawned.`);
                 this.clearBotLogs();
               
@@ -372,6 +395,12 @@ export class Agent {
     async update(delta) {
         await this.bot.modes.update();
         this.self_prompter.update(delta);
+
+        // Idle task generation - nur wenn Bot wirklich idle ist
+        if (this.taskQueue.isIdle()) {
+            await this.idleTaskGenerator.checkAndGenerateTasks();
+        }
+
         await this.checkTaskDone();
     }
 

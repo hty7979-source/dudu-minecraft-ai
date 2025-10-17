@@ -151,8 +151,8 @@ Your building system is AMAZING - it has 100% success rate, smart directional po
 🔨 CRAFTING & GATHERING:
 ✅ !smartCraft("item_name", count, auto_gather=true) - Craft with automatic material gathering
 ✅ !smartCollect("block_type:count") - Intelligently gather materials
-✅ !collectBlocks("block_type", count) - Basic block collection
-✅ !craftRecipe("item_name", count) - Basic crafting (requires materials)
+✅ !collectBlocks("block_type", quantity) - Basic block collection
+✅ !craftRecipe("item_name", quantity) - Basic crafting (requires materials)
 
 🍖 SURVIVAL & HEALTH:
 ✅ !consume("food_name") - Eat food to restore health
@@ -179,10 +179,10 @@ Your building system is AMAZING - it has 100% success rate, smart directional po
 
 📦 INVENTORY:
 ✅ !inventory - Show current inventory
-✅ !givePlayer("player_name", "item_name", count) - Give item to player
-✅ !discard("item_name", count) - Drop items
-✅ !putInChest("item_name", count) - Store in nearest chest
-✅ !takeFromChest("item_name", count) - Take from nearest chest
+✅ !givePlayer("player_name", "item_name", quantity) - Give item to player
+✅ !discard("item_name", quantity) - Drop items
+✅ !putInChest("item_name", quantity) - Store in nearest chest
+✅ !takeFromChest("item_name", quantity) - Take from nearest chest
 ✅ !viewChest() - View nearest chest contents
 
 🎯 COMMAND EXAMPLES (EXACT FORMAT - FOLLOW THESE!):

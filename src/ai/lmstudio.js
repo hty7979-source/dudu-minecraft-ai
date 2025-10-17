@@ -44,7 +44,7 @@ function parseTemplateTags(text) {
                 } else if (functionName === 'followPlayer' && args[0]) {
                     commandData = { player_name: args[0], follow_dist: args[1] || 3 };
                 } else if (functionName === 'givePlayer' && args[0]) {
-                    commandData = { player_name: args[0], item_name: args[1] || '', num: args[2] || 1 };
+                    commandData = { player_name: args[0], item_name: args[1] || '', quantity: args[2] || 1 };
                 } else if (functionName === 'build' && args[0]) {
                     commandData = { name: args[0] };
                 } else if (functionName === 'goToPlayer' && args[0]) {
@@ -154,20 +154,20 @@ function convertJsonToCommand(functionName, data) {
 
     if (fn === 'collectblocks') {
         const type = data.type || data.block_type || '';
-        const num = data.num || data.count || 1;
-        return `!collectBlocks("${type}", ${num})`;
+        const quantity = data.quantity || data.num || data.count || 1;
+        return `!collectBlocks("${type}", ${quantity})`;
     }
 
     if (fn === 'craftrecipe') {
         const recipeName = data.recipe_name || data.item || '';
-        const num = data.num || data.count || 1;
-        return `!craftRecipe("${recipeName}", ${num})`;
+        const quantity = data.quantity || data.num || data.count || 1;
+        return `!craftRecipe("${recipeName}", ${quantity})`;
     }
 
     if (fn === 'smeltitem') {
         const itemName = data.item_name || data.item || '';
-        const num = data.num || data.count || 1;
-        return `!smeltItem("${itemName}", ${num})`;
+        const quantity = data.quantity || data.num || data.count || 1;
+        return `!smeltItem("${itemName}", ${quantity})`;
     }
 
     // ============== INVENTORY & ITEMS ==============
@@ -178,8 +178,8 @@ function convertJsonToCommand(functionName, data) {
     if (fn === 'giveplayer') {
         const player = data.player_name || '';
         const itemName = data.item_name || data.item || '';
-        const num = data.num || data.count || data.quantity || 1;
-        return `!givePlayer("${player}", "${itemName}", ${num})`;
+        const quantity = data.quantity || data.num || data.count || 1;
+        return `!givePlayer("${player}", "${itemName}", ${quantity})`;
     }
 
     if (fn === 'consume') {
@@ -194,8 +194,8 @@ function convertJsonToCommand(functionName, data) {
 
     if (fn === 'discard') {
         const itemName = data.item_name || data.item || '';
-        const num = data.num || data.count || 1;
-        return `!discard("${itemName}", ${num})`;
+        const quantity = data.quantity || data.num || data.count || 1;
+        return `!discard("${itemName}", ${quantity})`;
     }
 
     // ============== MOVEMENT ==============
@@ -308,14 +308,14 @@ function convertJsonToCommand(functionName, data) {
     // ============== STORAGE ==============
     if (fn === 'putinchest') {
         const itemName = data.item_name || data.item || '';
-        const num = data.num || data.count || 1;
-        return `!putInChest("${itemName}", ${num})`;
+        const quantity = data.quantity || data.num || data.count || 1;
+        return `!putInChest("${itemName}", ${quantity})`;
     }
 
     if (fn === 'takefromchest') {
         const itemName = data.item_name || data.item || '';
-        const num = data.num || data.count || 1;
-        return `!takeFromChest("${itemName}", ${num})`;
+        const quantity = data.quantity || data.num || data.count || 1;
+        return `!takeFromChest("${itemName}", ${quantity})`;
     }
 
     if (fn === 'viewchest') {
