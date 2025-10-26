@@ -440,27 +440,42 @@ export async function collectBlock(bot, blockType, num=1, exclude=null) {
         blocktypes.push('stone');
 
     // Support alternative wood types (for deserts, taigas, etc.)
-    if (blockType.endsWith('_log')) {
-        // If looking for any specific log, accept ALL log types
+    // Handle generic "_log" request (from MaterialPlanner)
+    if (blockType === '_log' || blockType.endsWith('_log')) {
+        // Accept ALL log types
         const allWoodTypes = mc.WOOD_TYPES; // ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry']
+
+        // Clear original if generic "_log" request
+        if (blockType === '_log') {
+            blocktypes = [];
+        }
+
         for (const woodType of allWoodTypes) {
             const logType = `${woodType}_log`;
             if (!blocktypes.includes(logType)) {
                 blocktypes.push(logType);
             }
         }
-        log(bot, `Looking for any wood type: ${blocktypes.join(', ')}`);
+        log(bot, `Looking for any wood log: ${blocktypes.slice(0, 3).join(', ')}...`);
     }
 
     // Support alternative planks
-    if (blockType.endsWith('_planks')) {
+    // Handle generic "_planks" request (from MaterialPlanner)
+    if (blockType === '_planks' || blockType.endsWith('_planks')) {
         const allWoodTypes = mc.WOOD_TYPES;
+
+        // Clear original if generic "_planks" request
+        if (blockType === '_planks') {
+            blocktypes = [];
+        }
+
         for (const woodType of allWoodTypes) {
             const planksType = `${woodType}_planks`;
             if (!blocktypes.includes(planksType)) {
                 blocktypes.push(planksType);
             }
         }
+        log(bot, `Looking for any wood planks: ${blocktypes.slice(0, 3).join(', ')}...`);
     }
 
     const isLiquid = blockType === 'lava' || blockType === 'water';

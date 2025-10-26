@@ -164,6 +164,9 @@ export class MaterialPlanner {
      * Berechnet EXAKT wie viele Rohstoffe benötigt werden
      * Verwendet Hard-coded Rezepte für die wichtigsten Items
      *
+     * WICHTIG: Verwendet generisches "_log" und "_planks" für Holz-Flexibilität
+     * collectBlock() wird dann den passenden Holz-Typ finden
+     *
      * @param {string} item - Item das gecraftet werden soll
      * @param {number} count - Anzahl
      * @returns {Object} Rohstoff-Anforderungen mit aktueller Inventar-Berücksichtigung
@@ -178,12 +181,14 @@ export class MaterialPlanner {
         }
 
         // Hard-coded Rezepte für wichtige Items
+        // WICHTIG: Wooden Tools nutzen generisches "_planks" (nicht oak_planks)
+        // Dies erlaubt JEDE Holzart (oak, spruce, birch, jungle, acacia, dark_oak, mangrove, cherry)
         const recipes = {
-            // Tools
-            'wooden_pickaxe': { oak_planks: 3, stick: 2 },
-            'wooden_axe': { oak_planks: 3, stick: 2 },
-            'wooden_sword': { oak_planks: 2, stick: 1 },
-            'wooden_shovel': { oak_planks: 1, stick: 2 },
+            // Tools - Using generic _planks for ANY wood type
+            'wooden_pickaxe': { '_planks': 3, stick: 2 },
+            'wooden_axe': { '_planks': 3, stick: 2 },
+            'wooden_sword': { '_planks': 2, stick: 1 },
+            'wooden_shovel': { '_planks': 1, stick: 2 },
 
             'stone_pickaxe': { cobblestone: 3, stick: 2 },
             'stone_axe': { cobblestone: 3, stick: 2 },
@@ -195,12 +200,23 @@ export class MaterialPlanner {
             'iron_sword': { iron_ingot: 2, stick: 1 },
             'iron_shovel': { iron_ingot: 1, stick: 2 },
 
-            // Crafting basics
-            'oak_planks': { oak_log: 0.25 },      // 1 log = 4 planks
-            'stick': { oak_planks: 0.5 },         // 2 planks = 4 sticks
-            'crafting_table': { oak_planks: 4 },
+            // Crafting basics - Using generic _log and _planks for flexibility
+            '_planks': { '_log': 0.25 },          // 1 log = 4 planks (ANY wood type)
+            'stick': { '_planks': 0.5 },          // 2 planks = 4 sticks (ANY wood type)
+            'crafting_table': { '_planks': 4 },   // ANY wood type
             'furnace': { cobblestone: 8 },
             'torch': { coal: 0.25, stick: 0.25 }  // 1 coal + 1 stick = 4 torches
+
+            // Legacy oak-specific entries (kept for backwards compatibility)
+            // These will be used if specifically requested
+            ,'oak_planks': { 'oak_log': 0.25 },
+            'spruce_planks': { 'spruce_log': 0.25 },
+            'birch_planks': { 'birch_log': 0.25 },
+            'jungle_planks': { 'jungle_log': 0.25 },
+            'acacia_planks': { 'acacia_log': 0.25 },
+            'dark_oak_planks': { 'dark_oak_log': 0.25 },
+            'mangrove_planks': { 'mangrove_log': 0.25 },
+            'cherry_planks': { 'cherry_log': 0.25 }
         };
 
         const recipe = recipes[item];
