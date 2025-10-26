@@ -256,51 +256,143 @@ export const FOOD_RECIPES = {
 export class SmartFoodManager {
     constructor(bot) {
         this.bot = bot;
+        this.autoEatDisabled = false; // Track if we disabled auto-eat
+    }
+
+    /**
+     * Deaktiviert Auto-Eat temporär während Food-Beschaffung
+     * Verhindert dass Auto-Eat und Smart Food System gleichzeitig aktiv sind
+     */
+    disableAutoEat() {
+        if (this.bot.autoEat && this.bot.autoEat.enabled) {
+            console.log('⏸️  Temporarily disabling Auto-Eat (Smart Food System active)');
+            this.bot.autoEat.disableAuto();
+            this.autoEatDisabled = true;
+        }
+    }
+
+    /**
+     * Aktiviert Auto-Eat wieder nach Food-Beschaffung
+     */
+    enableAutoEat() {
+        if (this.autoEatDisabled && this.bot.autoEat) {
+            console.log('▶️  Re-enabling Auto-Eat (Smart Food System done)');
+            this.bot.autoEat.enableAuto();
+            this.autoEatDisabled = false;
+        }
     }
 
     /**
      * Hauptmethode: Intelligente Nahrungsbeschaffung
      * Findet den besten Weg um Nahrung zu bekommen
+     *
+     * @param {number} targetAmount - Anzahl der zu beschaffenden Nahrung
+     * @param {object} options - Optionen für Food-Beschaffung
+     * @param {boolean} options.disableAutoEat - Auto-Eat während Beschaffung deaktivieren (default: true)
+     * @param {string} options.priority - Priority-Modus ('foodPoints', 'saturation', 'effectiveQuality')
      */
-    async obtainFood(targetAmount = 5) {
+    async obtainFood(targetAmount = 5, options = {}) {
+        const {
+            disableAutoEat = true,
+            priority = 'foodPoints'
+        } = options;
+
         console.log('🍖 Smart Food System: Searching for best food source...');
 
-        // 1. Prüfe verfügbare Ressourcen
-        const inventory = world.getInventoryCounts(this.bot);
-        const options = this.evaluateFoodOptions(inventory);
-
-        if (options.length === 0) {
-            console.log('❌ No viable food options found');
-            return { success: false, foodObtained: 0 };
+        // Deaktiviere Auto-Eat wenn gewünscht
+        if (disableAutoEat) {
+            this.disableAutoEat();
         }
 
-        // 2. Sortiere nach Priorität
-        options.sort((a, b) => b.priority - a.priority);
+        try {
+            // 1. Prüfe verfügbare Ressourcen
+            const inventory = world.getInventoryCounts(this.bot);
+            const foodOptions = this.evaluateFoodOptions(inventory);
 
-        console.log(`📊 Found ${options.length} food options, trying best option: ${options[0].name}`);
+            if (foodOptions.length === 0) {
+                console.log('❌ No viable food options found');
+                return { success: false, foodObtained: 0 };
+            }
 
-        // 3. Versuche die beste Option
-        let totalObtained = 0;
+            // 2. Sortiere nach Priorität
+            foodOptions.sort((a, b) => b.priority - a.priority);
 
-        for (const option of options.slice(0, 3)) { // Probiere top 3 Optionen
-            const result = await this.acquireFood(option, targetAmount - totalObtained);
+            console.log(`📊 Found ${foodOptions.length} food options, trying best option: ${foodOptions[0].name}`);
 
-            if (result.success) {
-                totalObtained += result.amount;
+            // 3. Versuche die beste Option
+            let totalObtained = 0;
 
-                if (totalObtained >= targetAmount) {
-                    this.bot.chat(`✅ Ich habe ${totalObtained}x ${result.foodName} hergestellt`);
-                    return { success: true, foodObtained: totalObtained, foodType: result.foodName };
+            for (const option of foodOptions.slice(0, 3)) { // Probiere top 3 Optionen
+                const result = await this.acquireFood(option, targetAmount - totalObtained);
+
+                if (result.success) {
+                    totalObtained += result.amount;
+
+                    if (totalObtained >= targetAmount) {
+                        this.bot.chat(`✅ Ich habe ${totalObtained}x ${result.foodName} hergestellt`);
+
+                        // Update Auto-Eat banned food list basierend auf was wir haben
+                        this.updateAutoEatPreferences(result.foodName, priority);
+
+                        return {
+                            success: true,
+                            foodObtained: totalObtained,
+                            foodType: result.foodName
+                        };
+                    }
                 }
             }
+
+            if (totalObtained > 0) {
+                this.bot.chat(`✅ Ich habe ${totalObtained} Nahrung hergestellt`);
+                return { success: true, foodObtained: totalObtained };
+            }
+
+            return { success: false, foodObtained: 0 };
+
+        } finally {
+            // Aktiviere Auto-Eat wieder (egal ob Erfolg oder Fehler)
+            if (disableAutoEat) {
+                this.enableAutoEat();
+            }
+        }
+    }
+
+    /**
+     * Aktualisiert Auto-Eat Präferenzen basierend auf verfügbarem Food
+     * Nutzt die neuen v5.0.3 Features für optimale Food-Auswahl
+     */
+    updateAutoEatPreferences(foodType, priority = 'foodPoints') {
+        if (!this.bot.autoEat) return;
+
+        // Get food stats from recipes
+        let nutrition = 5; // Default
+        let isCookedMeat = false;
+
+        if (FOOD_RECIPES.cooked[foodType]) {
+            nutrition = FOOD_RECIPES.cooked[foodType].nutrition;
+            isCookedMeat = true;
+        } else if (FOOD_RECIPES.crafted[foodType]) {
+            nutrition = FOOD_RECIPES.crafted[foodType].nutrition;
         }
 
-        if (totalObtained > 0) {
-            this.bot.chat(`✅ Ich habe ${totalObtained} Nahrung hergestellt`);
-            return { success: true, foodObtained: totalObtained };
+        // Adjust priority based on food quality
+        let autoEatPriority = priority;
+        if (isCookedMeat && nutrition >= 8) {
+            // High-quality cooked meat: Use saturation priority
+            autoEatPriority = 'saturation';
+        } else if (nutrition >= 6) {
+            // Good quality: Use effective quality
+            autoEatPriority = 'effectiveQuality';
         }
 
-        return { success: false, foodObtained: 0 };
+        // Update Auto-Eat options
+        this.bot.autoEat.setOpts({
+            priority: autoEatPriority,
+            minHunger: nutrition >= 8 ? 16 : 15, // Wait longer if we have good food
+        });
+
+        console.log(`🎯 Updated Auto-Eat: priority=${autoEatPriority}, minHunger=${nutrition >= 8 ? 16 : 15}`);
     }
 
     /**
@@ -710,13 +802,149 @@ export class SmartFoodManager {
 
         return found;
     }
+
+    /**
+     * Gibt Informationen über die besten verfügbaren Foods zurück
+     * Nutzt Auto-Eat v5.0.3 API für detaillierte Food-Stats
+     *
+     * @returns {Array} Liste der besten verfügbaren Foods mit Stats
+     */
+    getBestAvailableFoods() {
+        if (!this.bot.autoEat || !this.bot.autoEat.foodsArray) {
+            return [];
+        }
+
+        const inventory = world.getInventoryCounts(this.bot);
+        const availableFoods = [];
+
+        // Get all foods from Auto-Eat's registry
+        for (const food of this.bot.autoEat.foodsArray) {
+            const count = inventory[food.name] || 0;
+            if (count > 0) {
+                availableFoods.push({
+                    name: food.name,
+                    count: count,
+                    foodPoints: food.foodPoints || 0,
+                    saturation: food.saturation || 0,
+                    effectiveQuality: (food.foodPoints || 0) + (food.saturation || 0),
+                    saturationRatio: food.foodPoints ? (food.saturation / food.foodPoints) : 0
+                });
+            }
+        }
+
+        // Sort by effective quality
+        availableFoods.sort((a, b) => b.effectiveQuality - a.effectiveQuality);
+
+        return availableFoods;
+    }
+
+    /**
+     * Prüft ob genug hochwertiges Essen vorhanden ist
+     * Falls nicht, triggert Food-Beschaffung
+     *
+     * @param {number} minAmount - Minimale Anzahl an hochwertigem Essen
+     * @param {number} minQuality - Minimale Qualität (foodPoints + saturation)
+     * @returns {Promise<boolean>} True wenn genug Essen vorhanden/beschafft wurde
+     */
+    async ensureQualityFood(minAmount = 5, minQuality = 10) {
+        const availableFoods = this.getBestAvailableFoods();
+
+        // Zähle hochwertiges Essen
+        const qualityFoodCount = availableFoods
+            .filter(food => food.effectiveQuality >= minQuality)
+            .reduce((sum, food) => sum + food.count, 0);
+
+        if (qualityFoodCount >= minAmount) {
+            console.log(`✅ Sufficient quality food available: ${qualityFoodCount}x (min: ${minAmount})`);
+            return true;
+        }
+
+        console.log(`⚠️ Insufficient quality food: ${qualityFoodCount}/${minAmount} - obtaining more...`);
+
+        // Beschaffe mehr Essen
+        const result = await this.obtainFood(minAmount - qualityFoodCount, {
+            priority: 'effectiveQuality'
+        });
+
+        return result.success;
+    }
+
+    /**
+     * Manuelles Essen mit Smart-Auswahl
+     * Nutzt Auto-Eat v5.0.3's eat() Methode mit optimaler Food-Auswahl
+     *
+     * @param {string} priority - Priority-Modus ('foodPoints', 'saturation', 'effectiveQuality')
+     * @returns {Promise<boolean>} True wenn erfolgreich gegessen
+     */
+    async eatBestFood(priority = 'effectiveQuality') {
+        if (!this.bot.autoEat) {
+            console.log('⚠️ Auto-Eat not available');
+            return false;
+        }
+
+        try {
+            console.log(`🍖 Eating best food (priority: ${priority})...`);
+
+            await this.bot.autoEat.eat({
+                priority: priority,
+                equipOldItem: true
+            });
+
+            console.log('✅ Successfully ate food');
+            return true;
+
+        } catch (error) {
+            console.log(`⚠️ Failed to eat: ${error.message}`);
+            return false;
+        }
+    }
 }
 
 // ============================================================================
 // PUBLIC API
 // ============================================================================
 
+/**
+ * Beschafft intelligent Nahrung (Legacy-kompatibel)
+ * @param {Bot} bot - Mineflayer Bot-Instanz
+ * @param {number} amount - Anzahl der zu beschaffenden Nahrung
+ * @returns {Promise<Object>} Result mit success, foodObtained, foodType
+ */
 export async function smartObtainFood(bot, amount = 5) {
     const manager = new SmartFoodManager(bot);
     return await manager.obtainFood(amount);
+}
+
+/**
+ * Prüft und stellt sicher, dass genug hochwertiges Essen vorhanden ist
+ * @param {Bot} bot - Mineflayer Bot-Instanz
+ * @param {number} minAmount - Minimale Anzahl an hochwertigem Essen
+ * @param {number} minQuality - Minimale Qualität (foodPoints + saturation)
+ * @returns {Promise<boolean>} True wenn genug Essen vorhanden
+ */
+export async function ensureQualityFood(bot, minAmount = 5, minQuality = 10) {
+    const manager = new SmartFoodManager(bot);
+    return await manager.ensureQualityFood(minAmount, minQuality);
+}
+
+/**
+ * Isst das beste verfügbare Food mit Smart-Auswahl
+ * Nutzt Auto-Eat v5.0.3's eat() Methode
+ * @param {Bot} bot - Mineflayer Bot-Instanz
+ * @param {string} priority - Priority-Modus ('foodPoints', 'saturation', 'effectiveQuality')
+ * @returns {Promise<boolean>} True wenn erfolgreich
+ */
+export async function eatBestFood(bot, priority = 'effectiveQuality') {
+    const manager = new SmartFoodManager(bot);
+    return await manager.eatBestFood(priority);
+}
+
+/**
+ * Gibt Informationen über die besten verfügbaren Foods zurück
+ * @param {Bot} bot - Mineflayer Bot-Instanz
+ * @returns {Array} Liste der besten verfügbaren Foods mit detaillierten Stats
+ */
+export function getBestAvailableFoods(bot) {
+    const manager = new SmartFoodManager(bot);
+    return manager.getBestAvailableFoods();
 }
