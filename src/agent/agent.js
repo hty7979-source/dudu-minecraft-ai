@@ -142,12 +142,33 @@ export class Agent {
     }
 
     async _setupEventHandlers(save_data, init_message) {
-        // Set up auto-eat
-        this.bot.autoEat.options = {
+        // Set up auto-eat with new v5 API
+        this.bot.autoEat.setOpts({
             priority: BOT_BEHAVIOR.AUTO_EAT.PRIORITY,
-            startAt: BOT_BEHAVIOR.AUTO_EAT.START_AT,
-            bannedFood: BOT_BEHAVIOR.AUTO_EAT.BANNED_FOOD
-        };
+            minHunger: BOT_BEHAVIOR.AUTO_EAT.START_AT,
+            minHealth: BOT_BEHAVIOR.AUTO_EAT.MIN_HEALTH,
+            bannedFood: BOT_BEHAVIOR.AUTO_EAT.BANNED_FOOD,
+            returnToLastItem: BOT_BEHAVIOR.AUTO_EAT.RETURN_TO_LAST_ITEM,
+            offhand: BOT_BEHAVIOR.AUTO_EAT.USE_OFFHAND,
+            eatingTimeout: BOT_BEHAVIOR.AUTO_EAT.EATING_TIMEOUT,
+            strictErrors: BOT_BEHAVIOR.AUTO_EAT.STRICT_ERRORS
+        });
+
+        // Enable automatic eating
+        this.bot.autoEat.enableAuto();
+
+        // Set up event listeners for auto-eat
+        this.bot.autoEat.on('eatStart', (opts) => {
+            console.log(`🍖 ${this.name} started eating ${opts.food.name} (hunger: ${this.bot.food})`);
+        });
+
+        this.bot.autoEat.on('eatFinish', (opts) => {
+            console.log(`✅ ${this.name} finished eating ${opts.food.name} (hunger: ${this.bot.food})`);
+        });
+
+        this.bot.autoEat.on('eatFail', (error) => {
+            console.warn(`⚠️ ${this.name} failed to eat:`, error.message);
+        });
 
         // Delegate to event_handlers module
         await setupEventHandlers(this, save_data, init_message);

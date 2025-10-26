@@ -6,7 +6,7 @@
   "type": "module",
   "keywords": [
     "minecraft",
-    "ai-companion", 
+    "ai-companion",
     "gaming-ai",
     "ollama",
     "local-ai",
@@ -62,7 +62,7 @@
     "minecraft-data": "^3.98.0",
     "mineflayer": "^4.33.0",
     "mineflayer-armor-manager": "^2.0.1",
-    "mineflayer-auto-eat": "^3.3.6",
+    "mineflayer-auto-eat": "^5.0.3",
     "mineflayer-builder": "^1.0.1",
     "mineflayer-collectblock": "^1.6.0",
     "mineflayer-pathfinder": "^2.4.5",
@@ -95,7 +95,11 @@
   "config": {
     "recommended_models": {
       "primary": "gemma2:9b",
-      "alternatives": ["llama3.1:8b", "qwen2.5:7b", "mistral:7b"],
+      "alternatives": [
+        "llama3.1:8b",
+        "qwen2.5:7b",
+        "mistral:7b"
+      ],
       "embedding": "nomic-embed-text"
     }
   }
