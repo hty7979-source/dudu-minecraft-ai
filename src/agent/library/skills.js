@@ -972,25 +972,46 @@ export async function viewChest(bot) {
 
 export async function consume(bot, itemName="") {
     /**
-     * Eat/drink the given item.
+     * Eat/drink the given item. If no item specified, auto-select best food.
      * @param {MinecraftBot} bot, reference to the minecraft bot.
-     * @param {string} itemName, the item to eat/drink.
+     * @param {string} itemName, the item to eat/drink (optional).
      * @returns {Promise<boolean>} true if the item was eaten, false otherwise.
      * @example
-     * await skills.eat(bot, "apple");
+     * await skills.consume(bot, "apple");
+     * await skills.consume(bot); // Auto-select best food
      **/
     let item, name;
-    if (itemName) {
+
+    // If specific item requested, find it
+    if (itemName && itemName.trim() !== "") {
         item = bot.inventory.items().find(item => item.name === itemName);
         name = itemName;
+    } else {
+        // Auto-select best food from inventory
+        const foodItems = bot.inventory.items().filter(item => {
+            try {
+                return item.foodPoints !== undefined && item.foodPoints > 0;
+            } catch (e) {
+                return false;
+            }
+        });
+
+        if (foodItems.length > 0) {
+            // Sort by food points (descending) - eat best food first
+            foodItems.sort((a, b) => (b.foodPoints || 0) - (a.foodPoints || 0));
+            item = foodItems[0];
+            name = item.name;
+        }
     }
+
     if (!item) {
-        log(bot, `You do not have any ${name} to eat.`);
+        console.log(`[FOOD] No food available to eat`);
         return false;
     }
+
     await bot.equip(item, 'hand');
     await bot.consume();
-    log(bot, `Consumed ${item.name}.`);
+    console.log(`[FOOD] Consumed ${item.name} (+${item.foodPoints || '?'} food)`);
     return true;
 }
 

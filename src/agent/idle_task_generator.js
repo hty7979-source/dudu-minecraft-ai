@@ -16,6 +16,7 @@
 import { TaskPriority } from './task_queue_manager.js';
 import * as skills from './library/skills.js';
 import { smartCraft } from './library/systems/crafting_system.js';
+import { smartObtainFood } from './library/systems/food_system.js';
 import { MaterialPlanner } from './material_planner.js';
 
 // ============================================================================
@@ -52,8 +53,13 @@ export class IdleTaskGenerator {
         }
         this.lastCheck = now;
 
-        // Nur wenn Bot wirklich idle ist
+        // Nur wenn Bot wirklich idle ist (keine Tasks UND keine Actions)
         if (!this.agent.taskQueue || !this.agent.taskQueue.isIdle()) {
+            return;
+        }
+
+        // Prüfe auch ob eine Action läuft (z.B. smartCollect via !newAction)
+        if (this.agent.actionManager && this.agent.actionManager.executing) {
             return;
         }
 
@@ -142,10 +148,10 @@ export class IdleTaskGenerator {
                     await skills.pickupNearbyItems(agent.bot);
 
                     console.log('✅ Item recovery completed!');
+                    agent.bot.chat('✅ Ich habe meine Items eingesammelt');
                     memory.completeDeathRecovery();
                 } catch (error) {
-                    console.error('Death recovery failed:', error);
-                    console.log('❌ Could not recover all items');
+                    console.log('❌ Death recovery failed:', error.message);
                     memory.completeDeathRecovery(); // Markiere trotzdem als abgeschlossen
                 }
             },
@@ -251,6 +257,7 @@ export class IdleTaskGenerator {
                 }
 
                 console.log('✅ Tool maintenance completed');
+                agent.bot.chat('✅ Ich habe meine Werkzeuge erneuert');
             },
             {
                 timeout: 120000, // 2 Minuten
@@ -264,8 +271,8 @@ export class IdleTaskGenerator {
     }
 
     /**
-     * NORMAL: Nahrung sammeln
-     * Erweiterte Strategie: Jage Tiere, sammle Äpfel, Pilze, Karotten, Kartoffeln
+     * NORMAL: Nahrung beschaffen mit Smart Food System
+     * Intelligentes System: Kochen, Craften, Jagen, Sammeln
      */
     async checkFoodSupply() {
         const memory = this.agent.contextual_memory;
@@ -273,74 +280,52 @@ export class IdleTaskGenerator {
         if (this.isOnCooldown('gather_food')) return false;
         if (memory.hasEnoughFood(3)) return false; // Mindestens 3 Food
 
-        console.log('🍖 Low food supply detected');
+        console.log('🍖 Low food supply detected - starting Smart Food System');
 
         await this.agent.taskQueue.runTask(
             'gather_food',
             TaskPriority.LOW,
             async (agent) => {
-                console.log('🍖 Gathering food...');
+                console.log('🍖 Smart Food System: Finding best food source...');
 
-                // Strategie 1: Umgebungsscan für essbare Items
-                const edibleBlocks = [
-                    'brown_mushroom', 'red_mushroom',  // Pilze
-                    'carrots', 'potatoes', 'beetroots', 'wheat',  // Farmitems
-                    'sweet_berry_bush',  // Beeren
-                    'oak_leaves', 'dark_oak_leaves'  // Äpfel von Bäumen
-                ];
+                // Smart Food System - findet automatisch die beste Food-Option
+                const result = await smartObtainFood(agent.bot, 5);
 
-                let foodCollected = 0;
+                if (result.success) {
+                    console.log(`✅ Food obtained: ${result.foodObtained}x ${result.foodType || 'food'}`);
+                } else {
+                    console.log('⚠️ Could not obtain food through smart system, trying fallback...');
 
-                // Versuche essbare Items in der Umgebung zu sammeln
-                for (const blockType of edibleBlocks) {
-                    try {
-                        const block = agent.bot.findBlock({
-                            matching: (b) => b && b.name === blockType,
-                            maxDistance: 32,
-                            count: 1
-                        });
-
-                        if (block) {
-                            console.log(`🍄 Found ${blockType} nearby! Collecting...`);
-
-                            // Sammle 2-5 Blöcke dieses Typs
-                            const amount = Math.min(5, 2 + Math.floor(Math.random() * 3));
-                            const success = await skills.collectBlock(agent.bot, blockType, amount);
-
-                            if (success) {
-                                console.log(`  ✓ Collected ${amount}x ${blockType}`);
-                                foodCollected++;
-                            }
-                        }
-                    } catch (error) {
-                        // Ignoriere Fehler und versuche nächsten Block-Typ
-                    }
-
-                    // Wenn genug Nahrung gesammelt wurde, beende
-                    if (foodCollected >= 2) break;
-                }
-
-                // Strategie 2: Jage Tiere wenn keine essbaren Pflanzen gefunden wurden
-                if (foodCollected === 0) {
+                    // Fallback: Einfaches Jagen
                     const animals = ['cow', 'pig', 'chicken', 'sheep', 'rabbit'];
+                    let hunted = 0;
 
-                    for (let i = 0; i < 3; i++) { // Jage 3 Tiere
+                    for (let i = 0; i < 3; i++) {
                         const animal = agent.bot.nearestEntity(entity =>
                             animals.includes(entity.name) &&
                             entity.position.distanceTo(agent.bot.entity.position) < 32
                         );
 
                         if (animal) {
-                            console.log(`🎯 Hunting ${animal.name}...`);
-                            await skills.attackEntity(agent.bot, animal);
+                            console.log(`🎯 Fallback: Hunting ${animal.name}...`);
+                            try {
+                                await skills.attackEntity(agent.bot, animal);
+                                hunted++;
+                            } catch (error) {
+                                console.log(`⚠️ Hunt failed: ${error.message}`);
+                            }
                         }
+                    }
+
+                    if (hunted > 0) {
+                        console.log(`✅ Fallback successful: Hunted ${hunted} animals`);
                     }
                 }
 
-                console.log('✅ Food gathering completed');
+                console.log('✅ Food task completed');
             },
             {
-                timeout: 120000, // 2 Minuten
+                timeout: 180000, // 3 Minuten
                 resumable: true,
                 metadata: { type: 'resource_gathering', resource: 'food' }
             }
@@ -370,7 +355,7 @@ export class IdleTaskGenerator {
 
         await this.agent.taskQueue.runTask(
             'get_bed',
-            TaskPriority.NORMAL,
+            TaskPriority.BACKGROUND, // Niedrige Priorität - nicht wichtig während Ressourcensammlung
             async (agent) => {
                 console.log('🌙 Need a bed for the night...');
 
@@ -382,6 +367,7 @@ export class IdleTaskGenerator {
                     if (hasWool && hasPlanks) {
                         await smartCraft(agent.bot, 'white_bed', 1, skills);
                         console.log('✅ Crafted a bed!');
+                        agent.bot.chat('✅ Ich habe ein Bett hergestellt');
                     } else {
                         // Versuche Bett zu finden
                         try {
@@ -450,10 +436,13 @@ export class IdleTaskGenerator {
                 try {
                     if (needsWoodenTools) {
                         await this.craftWoodenTools(agent);
+                        agent.bot.chat('✅ Ich habe Holzwerkzeuge hergestellt');
                     } else if (needsStoneTools) {
                         await this.craftStoneTools(agent);
+                        agent.bot.chat('✅ Ich habe Steinwerkzeuge hergestellt');
                     } else if (needsIronTools) {
                         await this.craftIronTools(agent);
+                        agent.bot.chat('✅ Ich habe Eisenwerkzeuge hergestellt');
                     }
 
                     console.log('✅ Tool upgrade completed!');
