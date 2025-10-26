@@ -438,6 +438,31 @@ export async function collectBlock(bot, blockType, num=1, exclude=null) {
         blocktypes.push('grass_block');
     if (blockType === 'cobblestone')
         blocktypes.push('stone');
+
+    // Support alternative wood types (for deserts, taigas, etc.)
+    if (blockType.endsWith('_log')) {
+        // If looking for any specific log, accept ALL log types
+        const allWoodTypes = mc.WOOD_TYPES; // ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry']
+        for (const woodType of allWoodTypes) {
+            const logType = `${woodType}_log`;
+            if (!blocktypes.includes(logType)) {
+                blocktypes.push(logType);
+            }
+        }
+        log(bot, `Looking for any wood type: ${blocktypes.join(', ')}`);
+    }
+
+    // Support alternative planks
+    if (blockType.endsWith('_planks')) {
+        const allWoodTypes = mc.WOOD_TYPES;
+        for (const woodType of allWoodTypes) {
+            const planksType = `${woodType}_planks`;
+            if (!blocktypes.includes(planksType)) {
+                blocktypes.push(planksType);
+            }
+        }
+    }
+
     const isLiquid = blockType === 'lava' || blockType === 'water';
 
     let collected = 0;
@@ -450,6 +475,11 @@ export async function collectBlock(bot, blockType, num=1, exclude=null) {
     const unsafeBlocks = ['obsidian'];
 
     for (let i=0; i<num; i++) {
+        // Increased search radius for better resource discovery
+        // Wood: 128 blocks (for sparse biomes like desert)
+        // Other resources: 64 blocks (default)
+        const searchRadius = blockType.endsWith('_log') ? 128 : 64;
+
         let blocks = world.getNearestBlocksWhere(bot, block => {
             if (!blocktypes.includes(block.name)) {
                 return false;
@@ -465,9 +495,9 @@ export async function collectBlock(bot, blockType, num=1, exclude=null) {
                 // collect only source blocks
                 return block.metadata === 0;
             }
-            
+
             return movements.safeToBreak(block) || unsafeBlocks.includes(block.name);
-        }, 64, 1);
+        }, searchRadius, 1);
 
         if (blocks.length === 0) {
             if (collected === 0)

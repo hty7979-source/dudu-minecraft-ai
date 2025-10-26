@@ -514,9 +514,37 @@ export class IdleTaskGenerator {
         const planksNeeded = 8; // 2+3+3 for sword, axe, pickaxe
         const sticksNeeded = 5; // 1+2+2 for sword, axe, pickaxe
 
-        if ((inventory['oak_planks'] || 0) < planksNeeded) {
-            console.log('  → Crafting oak_planks...');
-            await skills.craftRecipe(agent.bot, 'oak_planks', Math.ceil(planksNeeded / 4)); // 4 planks per log
+        // Count ANY type of planks (oak, spruce, birch, etc.)
+        const allWoodTypes = ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry'];
+        let totalPlanks = 0;
+        let availableWoodType = null;
+
+        for (const wood of allWoodTypes) {
+            const planksType = `${wood}_planks`;
+            const count = inventory[planksType] || 0;
+            totalPlanks += count;
+            if (count > 0 && !availableWoodType) {
+                availableWoodType = wood;
+            }
+        }
+
+        // If we don't have enough planks, craft from ANY available log type
+        if (totalPlanks < planksNeeded) {
+            // Find which log type we have
+            let logType = null;
+            for (const wood of allWoodTypes) {
+                if (inventory[`${wood}_log`] > 0) {
+                    logType = wood;
+                    break;
+                }
+            }
+
+            if (logType) {
+                console.log(`  → Crafting ${logType}_planks...`);
+                await skills.craftRecipe(agent.bot, `${logType}_planks`, Math.ceil((planksNeeded - totalPlanks) / 4));
+            } else {
+                console.log('  ⚠️ No logs available to craft planks');
+            }
         }
 
         if ((inventory['stick'] || 0) < sticksNeeded) {
