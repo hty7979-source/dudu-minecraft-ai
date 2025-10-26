@@ -493,33 +493,67 @@ export async function collectBlock(bot, blockType, num=1, exclude=null) {
         // Increased search radius for better resource discovery
         // Wood: 128 blocks (for sparse biomes like desert)
         // Other resources: 64 blocks (default)
-        const searchRadius = blockType.endsWith('_log') ? 128 : 64;
+        const searchRadius = (blockType.endsWith('_log') || blockType === '_log') ? 128 : 64;
 
-        let blocks = world.getNearestBlocksWhere(bot, block => {
-            if (!blocktypes.includes(block.name)) {
-                return false;
-            }
-            if (exclude) {
-                for (let position of exclude) {
-                    if (block.position.x === position.x && block.position.y === position.y && block.position.z === position.z) {
-                        return false;
+        // For wood in sparse biomes: Try multiple search attempts with travel
+        const isWoodSearch = blockType === '_log' || blockType.endsWith('_log');
+        const maxSearchAttempts = isWoodSearch ? 4 : 1; // Wood: 4 attempts, others: 1
+        const travelDistance = 30; // Blocks to travel between attempts
+
+        let blocks = [];
+        let searchAttempt = 0;
+
+        // Iterative search with travel
+        while (blocks.length === 0 && searchAttempt < maxSearchAttempts) {
+            searchAttempt++;
+
+            blocks = world.getNearestBlocksWhere(bot, block => {
+                if (!blocktypes.includes(block.name)) {
+                    return false;
+                }
+                if (exclude) {
+                    for (let position of exclude) {
+                        if (block.position.x === position.x && block.position.y === position.y && block.position.z === position.z) {
+                            return false;
+                        }
                     }
                 }
-            }
-            if (isLiquid) {
-                // collect only source blocks
-                return block.metadata === 0;
-            }
+                if (isLiquid) {
+                    // collect only source blocks
+                    return block.metadata === 0;
+                }
 
-            return movements.safeToBreak(block) || unsafeBlocks.includes(block.name);
-        }, searchRadius, 1);
+                return movements.safeToBreak(block) || unsafeBlocks.includes(block.name);
+            }, searchRadius, 1);
+
+            // If nothing found and we have more attempts, travel and try again
+            if (blocks.length === 0 && searchAttempt < maxSearchAttempts) {
+                log(bot, `Search attempt ${searchAttempt}/${maxSearchAttempts}: No ${blockType} found. Traveling ${travelDistance} blocks...`);
+
+                // Travel in a consistent direction (north)
+                const currentPos = bot.entity.position;
+                const targetX = currentPos.x;
+                const targetZ = currentPos.z - travelDistance; // North
+                const targetY = currentPos.y;
+
+                try {
+                    await goToPosition(bot, targetX, targetY, targetZ, 2);
+                    log(bot, `Traveled to new location. Searching again...`);
+                } catch (error) {
+                    log(bot, `Failed to travel: ${error.message}`);
+                    break; // Stop trying if we can't move
+                }
+            }
+        }
 
         if (blocks.length === 0) {
-            if (collected === 0)
-                log(bot, `No ${blockType} nearby to collect.`);
-            else
+            if (collected === 0) {
+                log(bot, `❌ No ${blockType} found after ${searchAttempt} search attempts (covered ~${searchAttempt * travelDistance} blocks).`);
+                return false; // Return false if nothing collected at all
+            } else {
                 log(bot, `No more ${blockType} nearby to collect.`);
-            break;
+                break;
+            }
         }
         const block = blocks[0];
         await bot.tool.equipForBlock(block);
