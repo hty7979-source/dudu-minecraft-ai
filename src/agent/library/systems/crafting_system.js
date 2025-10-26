@@ -916,7 +916,6 @@ export class SmartCraftingManager {
     const validatedName = itemValidator.validate(itemName);
     if (!validatedName) {
       console.log(`❌ Invalid item name: "${itemName}"`);
-      chatLimiter.smartChat(this.bot, `❌ Invalid item: "${itemName}"`, 'high');
       return false;
     }
 
@@ -927,7 +926,6 @@ export class SmartCraftingManager {
 
     if (alreadyHave >= quantity) {
       console.log(`✅ Already have ${alreadyHave}x ${validatedName}`);
-      chatLimiter.smartChat(this.bot, `✅ Have ${validatedName}!`, 'low');
       return true;
     }
 
@@ -955,7 +953,7 @@ export class SmartCraftingManager {
         }
         const success = await this.resourceGatherer.gather(validatedMaterial, needed, { checkChests: true });
         if (!success) {
-          chatLimiter.smartChat(this.bot, `❌ No ${validatedMaterial}`, 'high');
+          console.log(`❌ Missing material: ${validatedMaterial}`);
           return false;
         }
       }
@@ -964,7 +962,7 @@ export class SmartCraftingManager {
       const success = await this.craftingExecutor.craft(validatedName, stillNeed);
 
       if (success) {
-        chatLimiter.smartChat(this.bot, `✅ Crafted ${quantity}x ${validatedName}!`, 'high');
+        console.log(`✅ Crafted ${quantity}x ${validatedName}!`);
       }
 
       return success;
@@ -980,7 +978,6 @@ export class SmartCraftingManager {
     const validatedName = itemValidator.validate(blockType);
     if (!validatedName) {
       console.log(`❌ Invalid block/item name: "${blockType}"`);
-      chatLimiter.smartChat(this.bot, `❌ Invalid block: "${blockType}"`, 'high');
       return false;
     }
 

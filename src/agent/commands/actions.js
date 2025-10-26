@@ -358,7 +358,6 @@ const GATHERING_ACTIONS = [
             });
 
             console.log(`🤖 Starting smart collection: ${items} (strategy: ${strategy})`);
-            agent.bot.chat(`🤖 Starting smart collection: ${items} (strategy: ${strategy})`);
 
             for (const request of itemRequests) {
                 console.log(`🔍 Collecting ${request.count}x ${request.name}...`);
@@ -373,15 +372,14 @@ const GATHERING_ACTIONS = [
                     );
 
                     if (!success) {
-                        agent.bot.chat(`❌ Failed to collect ${request.name}`);
+                        console.log(`❌ Failed to collect ${request.name}`);
                         return `Failed to collect ${request.name}`;
                     }
 
                     console.log(`✅ Collected ${request.count}x ${request.name}`);
-                    agent.bot.chat(`✅ Collected ${request.count}x ${request.name}`);
                 } catch (error) {
                     console.error(`Error collecting ${request.name}:`, error);
-                    agent.bot.chat(`❌ Error: ${error.message}`);
+                    console.log(`❌ Error: ${error.message}`);
                     return `Error collecting ${request.name}: ${error.message}`;
                 }
             }
@@ -412,7 +410,7 @@ const GATHERING_ACTIONS = [
             // Import smart crafting system
             const { smartCraft } = await import('../library/systems/crafting_system.js');
 
-            agent.bot.chat(`🔨 Smart crafting ${quantity}x ${item}${auto_gather ? ' (auto-gathering materials)' : ''}...`);
+            console.log(`🔨 Smart crafting ${quantity}x ${item}${auto_gather ? ' (auto-gathering materials)' : ''}...`);
 
             try {
                 const success = await smartCraft(
@@ -423,15 +421,15 @@ const GATHERING_ACTIONS = [
                 );
 
                 if (success) {
-                    agent.bot.chat(`✅ Successfully crafted ${quantity}x ${item}!`);
+                    console.log(`✅ Successfully crafted ${quantity}x ${item}!`);
                     return `✅ Crafted ${quantity}x ${item}!`;
                 } else {
-                    agent.bot.chat(`❌ Failed to craft ${item}`);
+                    console.log(`❌ Failed to craft ${item}`);
                     return `❌ Failed to craft ${item}`;
                 }
             } catch (error) {
                 console.error(`Error crafting ${item}:`, error);
-                agent.bot.chat(`❌ Crafting error: ${error.message}`);
+                console.log(`❌ Crafting error: ${error.message}`);
                 return `Error: ${error.message}`;
             }
         }, false, -1)
@@ -539,7 +537,7 @@ const BUILDING_ACTIONS = [
             }
             
             const result = agent.building_manager.cancelBuild();
-            agent.bot.chat("🛑 Building operation cancelled!");
+            console.log("🛑 Building operation cancelled!");
             return result;
         }, false, -1)
     },
@@ -552,7 +550,7 @@ const BUILDING_ACTIONS = [
             }
             
             const status = agent.building_manager.getBuildStatus();
-            agent.bot.chat(status);
+            console.log(status);
             return status;
         }
     },
@@ -592,7 +590,7 @@ const BUILDING_ACTIONS = [
             }
 
             const info = agent.building_manager.getSchematicInfo(name);
-            agent.bot.chat(info);
+            console.log(info);
             return info;
         }
     },

@@ -63,9 +63,9 @@ export class SmartCollectEnhanced {
             // Phase 2: 🗂️ Inventory-Space-Management mit Smart Crafting System
             const spaceNeeded = Math.min(collectPlan.stillNeeded, 10); // Begrenze für Performance
             const spaceManaged = await this.ensureInventorySpace(spaceNeeded);
-            
+
             if (!spaceManaged) {
-                this.bot.chat('⚠️ Cannot manage inventory space - please free up space or place chest');
+                console.log('⚠️ Cannot manage inventory space - please free up space or place chest');
                 return false;
             }
 
@@ -162,8 +162,8 @@ export class SmartCollectEnhanced {
 
         // Verwende bewährtes Smart Crafting Inventory Management
         console.log(`⚠️ Insufficient space (${freeSlots}/${slotsNeeded}) - managing inventory...`);
-        this.bot.chat('🗂️ Organizing inventory to make space...');
-        
+        console.log('🗂️ Organizing inventory to make space...');
+
         const spaceManaged = await this.craftingManager.manageInventorySpace(slotsNeeded);
         
         if (spaceManaged) {
@@ -188,8 +188,8 @@ export class SmartCollectEnhanced {
         // Strategie 1: 📦 Extrahiere aus Chests (schnellste Option)
         if (collectPlan.sources.chests.length > 0) {
             console.log('📦 Phase 1: Extracting from storage chests...');
-            this.bot.chat('📦 Collecting from storage...');
-            
+            console.log('📦 Collecting from storage...');
+
             const extractedFromChests = await this.extractFromChestSources(collectPlan.sources.chests, collectPlan.stillNeeded);
             totalCollected += extractedFromChests;
             
@@ -204,8 +204,8 @@ export class SmartCollectEnhanced {
         // Strategie 2: 🔨 Crafting (wenn möglich und effizient)
         if (collectPlan.sources.crafting.possible && stillNeededAfterChests > 0) {
             console.log('🔨 Phase 2: Attempting to craft missing items...');
-            this.bot.chat(`🔨 Crafting ${stillNeededAfterChests}x ${collectPlan.targetBlock}...`);
-            
+            console.log(`🔨 Crafting ${stillNeededAfterChests}x ${collectPlan.targetBlock}...`);
+
             const craftedItems = await this.executeSmartCrafting(collectPlan.targetBlock, stillNeededAfterChests);
             totalCollected += craftedItems;
             
@@ -217,11 +217,11 @@ export class SmartCollectEnhanced {
 
         const stillNeededAfterCrafting = targetCount - totalCollected;
 
-        // Strategie 3: 🔥 Smelting (für Erze und verarbeitbare Materialien) 
+        // Strategie 3: 🔥 Smelting (für Erze und verarbeitbare Materialien)
         if (collectPlan.sources.smelting.possible && stillNeededAfterCrafting > 0) {
             console.log('🔥 Phase 3: Attempting to smelt materials...');
-            this.bot.chat(`🔥 Smelting materials for ${collectPlan.targetBlock}...`);
-            
+            console.log(`🔥 Smelting materials for ${collectPlan.targetBlock}...`);
+
             const smeltedItems = await this.executeSmartSmelting(collectPlan, stillNeededAfterCrafting);
             totalCollected += smeltedItems;
             
@@ -236,8 +236,8 @@ export class SmartCollectEnhanced {
         // Strategie 4: 🪨 Mining (letzte Option, aber mit Smart Tool Management)
         if (collectPlan.sources.mining.possible && finallyNeeded > 0) {
             console.log('🪨 Phase 4: Mining blocks with optimal tools...');
-            this.bot.chat(`⛏️ Mining ${finallyNeeded}x ${collectPlan.targetBlock}...`);
-            
+            console.log(`⛏️ Mining ${finallyNeeded}x ${collectPlan.targetBlock}...`);
+
             const minedItems = await this.executeSmartMining(collectPlan, finallyNeeded, options);
             totalCollected += minedItems;
         }
@@ -249,7 +249,7 @@ export class SmartCollectEnhanced {
             console.log(`✅ Collection successful! Got ${finalCount}/${targetCount} ${collectPlan.targetBlock}`);
             return true;
         } else if (finalCount > collectPlan.currentCount) {
-            this.bot.chat(`⚠️ Partial success: collected ${finalCount}/${targetCount} ${collectPlan.targetBlock}`);
+            console.log(`⚠️ Partial success: collected ${finalCount}/${targetCount} ${collectPlan.targetBlock}`);
             return finalCount > 0;
         } else {
             console.log(`❌ Could not collect ${collectPlan.targetBlock}. Try placing more chests or crafting tools.`);

@@ -118,7 +118,7 @@ export function setupHealthEvents(agent) {
         if (agent.bot.modes && agent.bot.modes.self_defense) {
             if (!agent.bot.modes.self_defense.active) {
                 console.log(`[COMBAT] ${damageSource} damage received (${damageAmount}) - Combat mode activated!`);
-                agent.bot.chat(`🛡️ Under attack! Combat mode activated (${damageAmount} damage, ${damageSource})`);
+                console.log(`🛡️ Under attack! Combat mode activated (${damageAmount} damage, ${damageSource})`);
                 agent.bot.modes.self_defense.on = true;
                 agent.bot.modes.self_defense.active = true;
                 // Immediate scan after activation

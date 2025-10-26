@@ -205,7 +205,7 @@ Your response:`;
                 `decision_step_${i + 1}`,
                 priority,
                 async (agent) => {
-                    agent.bot.chat(`📋 Step ${i + 1}/${decision.steps.length}: ${step}`);
+                    console.log(`📋 Step ${i + 1}/${decision.steps.length}: ${step}`);
 
                     // Versuche Step als Command zu interpretieren
                     // Annahme: Step enthält Command-Format wie "!collect wood 10"
@@ -216,7 +216,7 @@ Your response:`;
                         await agent.handleMessage('system', step, -1);
                     } else {
                         // Kein Command erkannt - gebe an User weiter
-                        agent.bot.chat(`ℹ️ Manual step needed: ${step}`);
+                        console.log(`ℹ️ Manual step needed: ${step}`);
                     }
                 },
                 {
@@ -292,13 +292,13 @@ Your response:`;
     showDecision(decision) {
         if (!decision) return;
 
-        this.agent.bot.chat(`🧠 Decision: ${decision.summary}`);
-        this.agent.bot.chat(`💭 Reasoning: ${decision.reasoning}`);
+        console.log(`🧠 Decision: ${decision.summary}`);
+        console.log(`💭 Reasoning: ${decision.reasoning}`);
 
         if (decision.steps.length > 0) {
-            this.agent.bot.chat(`📋 Steps:`);
+            console.log(`📋 Steps:`);
             decision.steps.forEach((step, i) => {
-                this.agent.bot.chat(`  ${i + 1}. ${step}`);
+                console.log(`  ${i + 1}. ${step}`);
             });
         }
     }

@@ -347,17 +347,15 @@ export const queryList = [
             
             try {
                 const schematicsByCategory = agent.building_manager.listSchematicsByCategory();
-                let result = "🏗️ AVAILABLE BUILDINGS:\n\n";
-                
+                let result = "🏗️ Verfügbare Gebäude: ";
+
+                const categories = [];
                 for (const [category, schematics] of Object.entries(schematicsByCategory)) {
-                    result += `📁 ${category.toUpperCase()}:\n`;
-                    schematics.forEach(schematic => {
-                        result += `   • ${schematic}\n`;
-                    });
-                    result += '\n';
+                    const schematicList = schematics.join(', ');
+                    categories.push(`${category} (${schematics.length}): ${schematicList}`);
                 }
-                
-                result += "💡 Use !build <name> to construct any building!";
+
+                result += categories.join(' | ');
                 return pad(result);
             } catch (error) {
                 return pad(`❌ Error listing buildings: ${error.message}`);

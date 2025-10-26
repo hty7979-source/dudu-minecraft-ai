@@ -79,9 +79,9 @@ export class Agent {
             
             // Set skin for profile, requires Fabric Tailor. (https://modrinth.com/mod/fabrictailor)
             if (this.prompter.profile.skin)
-                this.bot.chat(`/skin set URL ${this.prompter.profile.skin.model} ${this.prompter.profile.skin.path}`);
+                console.log(`Setting skin: /skin set URL ${this.prompter.profile.skin.model} ${this.prompter.profile.skin.path}`);
             else
-                this.bot.chat(`/skin clear`);
+                console.log(`Clearing skin: /skin clear`);
         });
 
         const spawnTimeout = setTimeout(() => {
@@ -405,7 +405,7 @@ export class Agent {
 
     cleanKill(msg='Killing agent process...', code=EXIT_CODES.ERROR) {
         this.history.add('system', msg);
-        this.bot.chat(code > EXIT_CODES.ERROR ? 'Restarting.' : 'Exiting.');
+        console.log(code > EXIT_CODES.ERROR ? 'Restarting.' : 'Exiting.');
         this.history.save();
         process.exit(code);
     }
