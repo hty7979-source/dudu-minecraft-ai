@@ -85,10 +85,10 @@ export class IdleTaskGenerator {
         if (await this.checkNighttime()) return;
 
         // 3. LOW: Verbesserungen
-        if (await this.checkToolDurability()) return;  // NEU: Werkzeug-Durability prüfen
+        if (await this.checkWorkbench()) return;  // MUST be before tool upgrades!
+        if (await this.checkToolDurability()) return;
         if (await this.checkToolUpgrade()) return;
         if (await this.checkTorches()) return;
-        if (await this.checkWorkbench()) return;
 
         // 4. BACKGROUND: Farming/Sammeln
         if (await this.checkResourceGathering()) return;
@@ -949,15 +949,22 @@ export class IdleTaskGenerator {
 
         if (this.isOnCooldown('get_workbench')) return false;
 
-        // Better check: Look in actual inventory, not just memory
+        // Check 1: Do we have a crafting table in inventory?
         const hasCraftingTable = bot.inventory.items().some(i => i.name === 'crafting_table');
         if (hasCraftingTable) return false;
+
+        // Check 2: Is there a crafting table nearby (within 16 blocks)?
+        const nearbyTable = bot.findBlock({
+            matching: (block) => block && block.name === 'crafting_table',
+            maxDistance: 16
+        });
+        if (nearbyTable) return false; // Found one nearby, no need to craft
 
         // Prüfe ob Holz vorhanden
         const hasLogs = bot.inventory.items().some(i => i.name.includes('log'));
         if (!hasLogs) return false;
 
-        console.log('🔨 No crafting table detected');
+        console.log('🔨 No crafting table detected (not in inventory or nearby)');
 
         await this.agent.taskQueue.runTask(
             'get_workbench',
