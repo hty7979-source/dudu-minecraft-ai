@@ -973,6 +973,7 @@ export class IdleTaskGenerator {
                         return;
                     }
 
+                    // Use smartCraft - now supports any wood type!
                     await smartCraft(agent.bot, 'crafting_table', 1, skills);
                     console.log('✅ Crafted crafting table');
                 } catch (error) {
