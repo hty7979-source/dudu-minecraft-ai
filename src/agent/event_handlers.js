@@ -118,7 +118,7 @@ export function setupHealthEvents(agent) {
         if (agent.bot.modes && agent.bot.modes.self_defense) {
             if (!agent.bot.modes.self_defense.active) {
                 console.log(`[COMBAT] ${damageSource} damage received (${damageAmount}) - Combat mode activated!`);
-                agent.bot.chat(`🛡️ Under attack! Combat mode activated (${damageAmount} damage, ${damageSource})`);
+                console.log(`🛡️ Under attack! Combat mode activated (${damageAmount} damage, ${damageSource})`);
                 agent.bot.modes.self_defense.on = true;
                 agent.bot.modes.self_defense.active = true;
                 // Immediate scan after activation
@@ -203,13 +203,25 @@ export function setupDeathMessageHandler(agent) {
         if (jsonMsg.translate && jsonMsg.translate.startsWith('death') && message.startsWith(agent.name)) {
             console.log('Agent died: ', message);
             let death_pos = agent.bot.entity.position;
+
+            // Legacy memory
             agent.memory_bank.rememberPlace('last_death_position', death_pos.x, death_pos.y, death_pos.z);
+
+            // New contextual memory - registriert Tod und startet Recovery
+            agent.contextual_memory.recordDeath(
+                Math.floor(death_pos.x),
+                Math.floor(death_pos.y),
+                Math.floor(death_pos.z)
+            );
+
             let death_pos_text = null;
             if (death_pos) {
-                death_pos_text = `x: ${death_pos.x.toFixed(2)}, y: ${death_pos.y.toFixed(2)}, z: ${death_pos.x.toFixed(2)}`;
+                death_pos_text = `x: ${death_pos.x.toFixed(2)}, y: ${death_pos.y.toFixed(2)}, z: ${death_pos.z.toFixed(2)}`;
             }
             let dimention = agent.bot.game.dimension;
-            agent.handleMessage('system', `You died at position ${death_pos_text || "unknown"} in the ${dimention} dimension with the final message: '${message}'. Your place of death is saved as 'last_death_position' if you want to return. Previous actions were stopped and you have respawned.`);
+
+            const timeRemaining = agent.contextual_memory.getRecoveryTimeRemaining();
+            agent.handleMessage('system', `You died at position ${death_pos_text || "unknown"} in the ${dimention} dimension with the final message: '${message}'. Your items will despawn in ${timeRemaining} seconds! Death recovery will be automatically prioritized. Previous actions were stopped and you have respawned.`);
         }
     });
 }

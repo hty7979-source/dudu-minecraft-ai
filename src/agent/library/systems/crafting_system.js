@@ -702,25 +702,100 @@ class MaterialAnalyzer {
     if (!recipes || recipes.length === 0) {
       return { success: false, reason: 'No recipe found' };
     }
-    
-    const recipe = recipes[0][0];
-    const currentInventory = world.getInventoryCounts(this.bot);
-    const missing = {};
-    
-    for (const [ingredient, needed] of Object.entries(recipe)) {
-      const totalNeeded = needed * quantity;
-      const available = currentInventory[ingredient] || 0;
-      
-      if (available < totalNeeded) {
-        missing[ingredient] = totalNeeded - available;
+
+    const currentInventory = this.getAggregatedInventory();
+
+    // Try all available recipes and pick the best one (least missing materials)
+    let bestRecipe = null;
+    let bestMissing = null;
+    let fewestMissingCount = Infinity;
+
+    for (const recipeData of recipes) {
+      const recipe = recipeData[0]; // Get ingredients from recipe
+      const missing = {};
+
+      for (const [ingredient, needed] of Object.entries(recipe)) {
+        const totalNeeded = needed * quantity;
+        let available = currentInventory[ingredient] || 0;
+        let actualIngredient = ingredient; // Track the actual ingredient to use
+
+        // WOOD FLEXIBILITY: If recipe wants specific wood type (e.g. oak_planks)
+        // but we have ANY other wood type, accept it!
+        if (available < totalNeeded) {
+          // Check if this is a wood-type specific ingredient
+          if (ingredient.endsWith('_planks')) {
+            // Use aggregated _planks count (all wood types combined)
+            available = currentInventory['_planks'] || 0;
+            // If we don't have the specific type, use the generic placeholder
+            if (available > 0) {
+              actualIngredient = '_planks';
+            }
+          } else if (ingredient.endsWith('_log')) {
+            // Use aggregated _log count (all wood types combined)
+            available = currentInventory['_log'] || 0;
+            // If we don't have the specific type, use the generic placeholder
+            if (available > 0) {
+              actualIngredient = '_log';
+            }
+          }
+        }
+
+        if (available < totalNeeded) {
+          missing[actualIngredient] = totalNeeded - available;
+        }
+      }
+
+      const missingCount = Object.keys(missing).length;
+
+      // If we can craft with this recipe (no missing items), use it immediately
+      if (missingCount === 0) {
+        return {
+          success: true,
+          recipe: recipe,
+          missing: {}
+        };
+      }
+
+      // Track the recipe with fewest missing items
+      if (missingCount < fewestMissingCount) {
+        fewestMissingCount = missingCount;
+        bestRecipe = recipe;
+        bestMissing = missing;
       }
     }
-    
+
+    // Return the best recipe we found (even if missing items)
     return {
-      success: Object.keys(missing).length === 0,
-      recipe: recipe,
-      missing: missing
+      success: fewestMissingCount === 0,
+      recipe: bestRecipe,
+      missing: bestMissing,
+      reason: fewestMissingCount === 0 ? null : `Missing ${fewestMissingCount} material(s): ${Object.keys(bestMissing || {}).join(', ')}`
     };
+  }
+
+  /**
+   * Get inventory with aggregated wood types
+   * Counts both specific items (oak_planks) and generic types (_planks)
+   */
+  getAggregatedInventory() {
+    const inventory = {};
+    const items = this.bot.inventory.items();
+
+    for (const item of items) {
+      inventory[item.name] = (inventory[item.name] || 0) + item.count;
+
+      // Aggregate all log types to their specific wood type AND generic "_log"
+      if (item.name.endsWith('_log')) {
+        inventory['_log'] = (inventory['_log'] || 0) + item.count;
+      }
+
+      // Aggregate all planks types to their specific wood type AND generic "_planks"
+      if (item.name.endsWith('_planks')) {
+        inventory['_planks'] = (inventory['_planks'] || 0) + item.count;
+      }
+    }
+
+    return inventory;
   }
 
   calculateMaterialTree(itemName, quantity) {
@@ -745,23 +820,38 @@ class MaterialAnalyzer {
   }
 
   substituteWoodMaterials(materials, inventory) {
-    const woodTypes = ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak'];
-    const availableWood = woodTypes.find(wood => 
+    const woodTypes = ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry'];
+    const availableWood = woodTypes.find(wood =>
       (inventory[`${wood}_log`] || 0) > 0 || (inventory[`${wood}_planks`] || 0) > 0
     );
-    
+
     if (!availableWood) return materials;
-    
+
     const substituted = { ...materials };
     for (const [item, count] of Object.entries(materials)) {
-      if (item.includes('oak_')) {
+      // Replace generic "_log" placeholder with available wood type
+      if (item === '_log') {
+        const newItem = `${availableWood}_log`;
+        substituted[newItem] = count;
+        delete substituted[item];
+        console.log(`🔄 Substituted ${item} → ${newItem}`);
+      }
+      // Replace generic "_planks" placeholder with available wood type
+      else if (item === '_planks') {
+        const newItem = `${availableWood}_planks`;
+        substituted[newItem] = count;
+        delete substituted[item];
+        console.log(`🔄 Substituted ${item} → ${newItem}`);
+      }
+      // Replace oak-specific items with available wood type
+      else if (item.includes('oak_')) {
         const newItem = item.replace('oak_', `${availableWood}_`);
         substituted[newItem] = count;
         delete substituted[item];
         console.log(`🔄 Substituted ${item} → ${newItem}`);
       }
     }
-    
+
     return substituted;
   }
 }
@@ -865,12 +955,8 @@ class CraftingExecutor {
   async craft(itemName, quantity) {
     console.log(`🔨 Crafting ${quantity}x ${itemName}`);
 
-    const analysis = this.materialAnalyzer.analyzeRecipe(itemName, quantity);
-
-    if (!analysis.success) {
-      console.log(`❌ Missing materials:`, analysis.missing);
-      return false;
-    }
+    // NOTE: We don't check materials here anymore - that's done by craftIntelligently()
+    // which also handles material substitution and recursive crafting
 
     // Ensure inventory space
     const slotsNeeded = Math.ceil(quantity / 64);
@@ -916,7 +1002,6 @@ export class SmartCraftingManager {
     const validatedName = itemValidator.validate(itemName);
     if (!validatedName) {
       console.log(`❌ Invalid item name: "${itemName}"`);
-      chatLimiter.smartChat(this.bot, `❌ Invalid item: "${itemName}"`, 'high');
       return false;
     }
 
@@ -927,7 +1012,6 @@ export class SmartCraftingManager {
 
     if (alreadyHave >= quantity) {
       console.log(`✅ Already have ${alreadyHave}x ${validatedName}`);
-      chatLimiter.smartChat(this.bot, `✅ Have ${validatedName}!`, 'low');
       return true;
     }
 
@@ -937,14 +1021,24 @@ export class SmartCraftingManager {
       // Phase 1: Analyze materials
       const analysis = this.materialAnalyzer.analyzeRecipe(validatedName, stillNeed);
 
-      if (!analysis.success) {
+      if (!analysis.recipe) {
         console.log(`❌ Cannot craft ${validatedName}: ${analysis.reason}`);
         return false;
       }
 
-      // Phase 2: Gather missing materials
-      let materials = analysis.missing;
-      materials = this.materialAnalyzer.substituteWoodMaterials(materials, inventory);
+      // Phase 2: Gather missing materials (even if success is false - we'll try to craft/gather them!)
+      let materials = analysis.missing || {};
+
+      if (Object.keys(materials).length > 0) {
+        console.log(`📋 Missing materials before substitution: ${Object.keys(materials).join(', ')}`);
+        materials = this.materialAnalyzer.substituteWoodMaterials(materials, inventory);
+        console.log(`📋 Missing materials after substitution: ${Object.keys(materials).join(', ')}`);
+      }
+
+      // If no materials are missing after substitution, we're good!
+      if (Object.keys(materials).length === 0) {
+        console.log(`✅ All materials available for ${validatedName}`);
+      }
 
       for (const [material, needed] of Object.entries(materials)) {
         // Validate material names as well
@@ -953,10 +1047,28 @@ export class SmartCraftingManager {
           console.log(`⚠️ Skipping invalid material: "${material}"`);
           continue;
         }
-        const success = await this.resourceGatherer.gather(validatedMaterial, needed, { checkChests: true });
-        if (!success) {
-          chatLimiter.smartChat(this.bot, `❌ No ${validatedMaterial}`, 'high');
-          return false;
+
+        // Check current inventory to see how much we actually need
+        const currentInventory = world.getInventoryCounts(this.bot);
+        const currentAmount = currentInventory[validatedMaterial] || 0;
+        const totalNeeded = needed + currentAmount; // Total we need to have, not just what's missing
+
+        // Check if this material is craftable - if so, craft it recursively!
+        const materialRecipes = mc.getItemCraftingRecipes(validatedMaterial);
+        if (materialRecipes && materialRecipes.length > 0) {
+          console.log(`🔄 Recursively crafting ${needed}x ${validatedMaterial} (have ${currentAmount}, need ${totalNeeded} total)...`);
+          const craftSuccess = await this.craftIntelligently(validatedMaterial, totalNeeded);
+          if (!craftSuccess) {
+            console.log(`❌ Failed to craft prerequisite: ${validatedMaterial}`);
+            return false;
+          }
+        } else {
+          // Not craftable - try to gather it
+          const success = await this.resourceGatherer.gather(validatedMaterial, needed, { checkChests: true });
+          if (!success) {
+            console.log(`❌ Missing material: ${validatedMaterial}`);
+            return false;
+          }
         }
       }
 
@@ -964,7 +1076,7 @@ export class SmartCraftingManager {
       const success = await this.craftingExecutor.craft(validatedName, stillNeed);
 
       if (success) {
-        chatLimiter.smartChat(this.bot, `✅ Crafted ${quantity}x ${validatedName}!`, 'high');
+        console.log(`✅ Crafted ${quantity}x ${validatedName}!`);
       }
 
       return success;
@@ -980,7 +1092,6 @@ export class SmartCraftingManager {
     const validatedName = itemValidator.validate(blockType);
     if (!validatedName) {
       console.log(`❌ Invalid block/item name: "${blockType}"`);
-      chatLimiter.smartChat(this.bot, `❌ Invalid block: "${blockType}"`, 'high');
       return false;
     }
 

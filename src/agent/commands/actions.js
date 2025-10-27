@@ -258,13 +258,13 @@ const INVENTORY_ACTIONS = [
     {
         name: '!givePlayer',
         description: 'Give the specified item to the given player.',
-        params: { 
-            'player_name': { type: 'string', description: 'The name of the player to give the item to.' }, 
+        params: {
+            'player_name': { type: 'string', description: 'The name of the player to give the item to.' },
             'item_name': { type: 'ItemName', description: 'The name of the item to give.' },
-            'num': { type: 'int', description: 'The number of items to give.', domain: [1, Number.MAX_SAFE_INTEGER] }
+            'quantity': { type: 'int', description: 'The number of items to give.', domain: [1, Number.MAX_SAFE_INTEGER] }
         },
-        perform: runAsAction(async (agent, player_name, item_name, num) => {
-            await skills.giveToPlayer(agent.bot, item_name, player_name, num);
+        perform: runAsAction(async (agent, player_name, item_name, quantity) => {
+            await skills.giveToPlayer(agent.bot, item_name, player_name, quantity);
         })
     },
     {
@@ -288,12 +288,12 @@ const INVENTORY_ACTIONS = [
         description: 'Discard the given item from the inventory.',
         params: {
             'item_name': { type: 'ItemName', description: 'The name of the item to discard.' },
-            'num': { type: 'int', description: 'The number of items to discard.', domain: [1, Number.MAX_SAFE_INTEGER] }
+            'quantity': { type: 'int', description: 'The number of items to discard.', domain: [1, Number.MAX_SAFE_INTEGER] }
         },
-        perform: runAsAction(async (agent, item_name, num) => {
+        perform: runAsAction(async (agent, item_name, quantity) => {
             const start_loc = agent.bot.entity.position;
             await skills.moveAway(agent.bot, 5);
-            await skills.discard(agent.bot, item_name, num);
+            await skills.discard(agent.bot, item_name, quantity);
             await skills.goToPosition(agent.bot, start_loc.x, start_loc.y, start_loc.z, 0);
         })
     }
@@ -309,10 +309,10 @@ const STORAGE_ACTIONS = [
         description: 'Put the given item in the nearest chest.',
         params: {
             'item_name': { type: 'ItemName', description: 'The name of the item to put in the chest.' },
-            'num': { type: 'int', description: 'The number of items to put in the chest.', domain: [1, Number.MAX_SAFE_INTEGER] }
+            'quantity': { type: 'int', description: 'The number of items to put in the chest.', domain: [1, Number.MAX_SAFE_INTEGER] }
         },
-        perform: runAsAction(async (agent, item_name, num) => {
-            await skills.putInChest(agent.bot, item_name, num);
+        perform: runAsAction(async (agent, item_name, quantity) => {
+            await skills.putInChest(agent.bot, item_name, quantity);
         })
     },
     {
@@ -320,10 +320,10 @@ const STORAGE_ACTIONS = [
         description: 'Take the given items from the nearest chest.',
         params: {
             'item_name': { type: 'ItemName', description: 'The name of the item to take.' },
-            'num': { type: 'int', description: 'The number of items to take.', domain: [1, Number.MAX_SAFE_INTEGER] }
+            'quantity': { type: 'int', description: 'The number of items to take.', domain: [1, Number.MAX_SAFE_INTEGER] }
         },
-        perform: runAsAction(async (agent, item_name, num) => {
-            await skills.takeFromChest(agent.bot, item_name, num);
+        perform: runAsAction(async (agent, item_name, quantity) => {
+            await skills.takeFromChest(agent.bot, item_name, quantity);
         })
     },
     {
@@ -358,7 +358,6 @@ const GATHERING_ACTIONS = [
             });
 
             console.log(`🤖 Starting smart collection: ${items} (strategy: ${strategy})`);
-            agent.bot.chat(`🤖 Starting smart collection: ${items} (strategy: ${strategy})`);
 
             for (const request of itemRequests) {
                 console.log(`🔍 Collecting ${request.count}x ${request.name}...`);
@@ -373,15 +372,14 @@ const GATHERING_ACTIONS = [
                     );
 
                     if (!success) {
-                        agent.bot.chat(`❌ Failed to collect ${request.name}`);
+                        console.log(`❌ Failed to collect ${request.name}`);
                         return `Failed to collect ${request.name}`;
                     }
 
                     console.log(`✅ Collected ${request.count}x ${request.name}`);
-                    agent.bot.chat(`✅ Collected ${request.count}x ${request.name}`);
                 } catch (error) {
                     console.error(`Error collecting ${request.name}:`, error);
-                    agent.bot.chat(`❌ Error: ${error.message}`);
+                    console.log(`❌ Error: ${error.message}`);
                     return `Error collecting ${request.name}: ${error.message}`;
                 }
             }
@@ -394,10 +392,10 @@ const GATHERING_ACTIONS = [
         description: 'Collect the nearest blocks of a given type.',
         params: {
             'type': { type: 'BlockName', description: 'The block type to collect.' },
-            'num': { type: 'int', description: 'The number of blocks to collect.', domain: [1, Number.MAX_SAFE_INTEGER] }
+            'quantity': { type: 'int', description: 'The number of blocks to collect.', domain: [1, Number.MAX_SAFE_INTEGER] }
         },
-        perform: runAsAction(async (agent, type, num) => {
-            await skills.collectBlock(agent.bot, type, num);
+        perform: runAsAction(async (agent, type, quantity) => {
+            await skills.collectBlock(agent.bot, type, quantity);
         }, false, 10)
     },
     {
@@ -412,7 +410,7 @@ const GATHERING_ACTIONS = [
             // Import smart crafting system
             const { smartCraft } = await import('../library/systems/crafting_system.js');
 
-            agent.bot.chat(`🔨 Smart crafting ${quantity}x ${item}${auto_gather ? ' (auto-gathering materials)' : ''}...`);
+            console.log(`🔨 Smart crafting ${quantity}x ${item}${auto_gather ? ' (auto-gathering materials)' : ''}...`);
 
             try {
                 const success = await smartCraft(
@@ -423,15 +421,15 @@ const GATHERING_ACTIONS = [
                 );
 
                 if (success) {
-                    agent.bot.chat(`✅ Successfully crafted ${quantity}x ${item}!`);
+                    console.log(`✅ Successfully crafted ${quantity}x ${item}!`);
                     return `✅ Crafted ${quantity}x ${item}!`;
                 } else {
-                    agent.bot.chat(`❌ Failed to craft ${item}`);
+                    console.log(`❌ Failed to craft ${item}`);
                     return `❌ Failed to craft ${item}`;
                 }
             } catch (error) {
                 console.error(`Error crafting ${item}:`, error);
-                agent.bot.chat(`❌ Crafting error: ${error.message}`);
+                console.log(`❌ Crafting error: ${error.message}`);
                 return `Error: ${error.message}`;
             }
         }, false, -1)
@@ -441,10 +439,10 @@ const GATHERING_ACTIONS = [
         description: 'Craft the given recipe a given number of times.',
         params: {
             'recipe_name': { type: 'ItemName', description: 'The name of the output item to craft.' },
-            'num': { type: 'int', description: 'The number of times to craft the recipe. This is NOT the number of output items, as it may craft many more items depending on the recipe.', domain: [1, Number.MAX_SAFE_INTEGER] }
+            'quantity': { type: 'int', description: 'The number of times to craft the recipe. This is NOT the number of output items, as it may craft many more items depending on the recipe.', domain: [1, Number.MAX_SAFE_INTEGER] }
         },
-        perform: runAsAction(async (agent, recipe_name, num) => {
-            await skills.craftRecipe(agent.bot, recipe_name, num);
+        perform: runAsAction(async (agent, recipe_name, quantity) => {
+            await skills.craftRecipe(agent.bot, recipe_name, quantity);
         })
     },
     {
@@ -452,10 +450,10 @@ const GATHERING_ACTIONS = [
         description: 'Smelt the given item the given number of times.',
         params: {
             'item_name': { type: 'ItemName', description: 'The name of the input item to smelt.' },
-            'num': { type: 'int', description: 'The number of times to smelt the item.', domain: [1, Number.MAX_SAFE_INTEGER] }
+            'quantity': { type: 'int', description: 'The number of times to smelt the item.', domain: [1, Number.MAX_SAFE_INTEGER] }
         },
-        perform: runAsAction(async (agent, item_name, num) => {
-            let success = await skills.smeltItem(agent.bot, item_name, num);
+        perform: runAsAction(async (agent, item_name, quantity) => {
+            let success = await skills.smeltItem(agent.bot, item_name, quantity);
             if (success) {
                 setTimeout(() => {
                     agent.cleanKill('Safely restarting to update inventory.');
@@ -539,7 +537,7 @@ const BUILDING_ACTIONS = [
             }
             
             const result = agent.building_manager.cancelBuild();
-            agent.bot.chat("🛑 Building operation cancelled!");
+            console.log("🛑 Building operation cancelled!");
             return result;
         }, false, -1)
     },
@@ -552,7 +550,7 @@ const BUILDING_ACTIONS = [
             }
             
             const status = agent.building_manager.getBuildStatus();
-            agent.bot.chat(status);
+            console.log(status);
             return status;
         }
     },
@@ -592,7 +590,7 @@ const BUILDING_ACTIONS = [
             }
 
             const info = agent.building_manager.getSchematicInfo(name);
-            agent.bot.chat(info);
+            console.log(info);
             return info;
         }
     },

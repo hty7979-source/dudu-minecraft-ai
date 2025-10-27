@@ -8,6 +8,10 @@ import { containsCommand, commandExists, executeCommand, truncCommandMessage, is
 import { ActionManager } from './action_manager.js';
 import { NPCContoller } from './npc/controller.js';
 import { MemoryBank } from './memory_bank.js';
+import { ContextualMemory } from './contextual_memory.js';
+import { TaskQueueManager } from './task_queue_manager.js';
+import { IdleTaskGenerator } from './idle_task_generator.js';
+import { DecisionEngine } from './decision_engine.js';
 import { SelfPrompter } from './self_prompter.js';
 import convoManager from './conversation.js';
 import { handleTranslation, handleEnglishTranslation } from '../utils/translator.js';
@@ -33,16 +37,19 @@ export class Agent {
         this.history = new History(this);
         this.coder = new Coder(this);
         this.npc = new NPCContoller(this);
-        this.memory_bank = new MemoryBank();
+
+        // Memory systems
+        this.memory_bank = new MemoryBank(); // Legacy support
+        this.contextual_memory = new ContextualMemory(); // New contextual memory
+
+        // Task and decision systems
+        this.taskQueue = new TaskQueueManager(this);
+        this.idleTaskGenerator = new IdleTaskGenerator(this);
+        this.decisionEngine = new DecisionEngine(this);
+
         this.self_prompter = new SelfPrompter(this);
         this.building_manager = new BuildingManager(null, this); // Bot wird später gesetzt
         convoManager.initAgent(this);
-
-        // Wait for LMStudio chat model if needed
-        if (this.prompter.chat_model.constructor.name === 'LMStudio') {
-            console.log('⏳ Detected LMStudio chat model, checking server availability...');
-            await this.prompter.chat_model.waitForServer();
-        }
 
         await this.prompter.initExamples();
 
@@ -72,9 +79,9 @@ export class Agent {
             
             // Set skin for profile, requires Fabric Tailor. (https://modrinth.com/mod/fabrictailor)
             if (this.prompter.profile.skin)
-                this.bot.chat(`/skin set URL ${this.prompter.profile.skin.model} ${this.prompter.profile.skin.path}`);
+                console.log(`Setting skin: /skin set URL ${this.prompter.profile.skin.model} ${this.prompter.profile.skin.path}`);
             else
-                this.bot.chat(`/skin clear`);
+                console.log(`Clearing skin: /skin clear`);
         });
 
         const spawnTimeout = setTimeout(() => {
@@ -93,9 +100,19 @@ export class Agent {
                 this.building_manager.initializeComponents();
                 console.log('🏗️ BuildingManager initialized with bot');
 
+                // Initialize contextual memory with homepoint
+                const spawnPos = this.bot.entity.position;
+                this.contextual_memory.setHomepoint(
+                    Math.floor(spawnPos.x),
+                    Math.floor(spawnPos.y),
+                    Math.floor(spawnPos.z)
+                );
+                this.contextual_memory.startNewSession();
+                console.log('🧠 ContextualMemory initialized with homepoint');
+
                 // Wait for bot stats to be initialized
                 await new Promise((resolve) => setTimeout(resolve, TIMING.SPAWN_WAIT_MS));
-                
+
                 console.log(`${this.name} spawned.`);
                 this.clearBotLogs();
               
@@ -125,12 +142,33 @@ export class Agent {
     }
 
     async _setupEventHandlers(save_data, init_message) {
-        // Set up auto-eat
-        this.bot.autoEat.options = {
+        // Set up auto-eat with new v5 API
+        this.bot.autoEat.setOpts({
             priority: BOT_BEHAVIOR.AUTO_EAT.PRIORITY,
-            startAt: BOT_BEHAVIOR.AUTO_EAT.START_AT,
-            bannedFood: BOT_BEHAVIOR.AUTO_EAT.BANNED_FOOD
-        };
+            minHunger: BOT_BEHAVIOR.AUTO_EAT.START_AT,
+            minHealth: BOT_BEHAVIOR.AUTO_EAT.MIN_HEALTH,
+            bannedFood: BOT_BEHAVIOR.AUTO_EAT.BANNED_FOOD,
+            returnToLastItem: BOT_BEHAVIOR.AUTO_EAT.RETURN_TO_LAST_ITEM,
+            offhand: BOT_BEHAVIOR.AUTO_EAT.USE_OFFHAND,
+            eatingTimeout: BOT_BEHAVIOR.AUTO_EAT.EATING_TIMEOUT,
+            strictErrors: BOT_BEHAVIOR.AUTO_EAT.STRICT_ERRORS
+        });
+
+        // Enable automatic eating
+        this.bot.autoEat.enableAuto();
+
+        // Set up event listeners for auto-eat
+        this.bot.autoEat.on('eatStart', (opts) => {
+            console.log(`🍖 ${this.name} started eating ${opts.food.name} (hunger: ${this.bot.food})`);
+        });
+
+        this.bot.autoEat.on('eatFinish', (opts) => {
+            console.log(`✅ ${this.name} finished eating ${opts.food.name} (hunger: ${this.bot.food})`);
+        });
+
+        this.bot.autoEat.on('eatFail', (error) => {
+            console.warn(`⚠️ ${this.name} failed to eat:`, error.message);
+        });
 
         // Delegate to event_handlers module
         await setupEventHandlers(this, save_data, init_message);
@@ -372,6 +410,12 @@ export class Agent {
     async update(delta) {
         await this.bot.modes.update();
         this.self_prompter.update(delta);
+
+        // Idle task generation - nur wenn Bot wirklich idle ist
+        if (this.taskQueue.isIdle()) {
+            await this.idleTaskGenerator.checkAndGenerateTasks();
+        }
+
         await this.checkTaskDone();
     }
 
@@ -382,7 +426,7 @@ export class Agent {
 
     cleanKill(msg='Killing agent process...', code=EXIT_CODES.ERROR) {
         this.history.add('system', msg);
-        this.bot.chat(code > EXIT_CODES.ERROR ? 'Restarting.' : 'Exiting.');
+        console.log(code > EXIT_CODES.ERROR ? 'Restarting.' : 'Exiting.');
         this.history.save();
         process.exit(code);
     }

@@ -18,9 +18,9 @@ export class EnhancedMiningManager {
      */
     async enhancedCollectBlock(blockType, num = 1, exclude = null) {
         console.log(`🔧 Enhanced mining: ${num}x ${blockType}`);
-        
+
         if (num < 1) {
-            this.bot.chat(`Invalid number of blocks to collect: ${num}`);
+            console.log(`Invalid number of blocks to collect: ${num}`);
             return false;
         }
 
@@ -43,12 +43,12 @@ export class EnhancedMiningManager {
                 if (success) {
                     collected++;
                 } else {
-                    this.bot.chat(`⚠️ Could not find more ${blockType} blocks to mine`);
+                    console.log(`⚠️ Could not find more ${blockType} blocks to mine`);
                     break;
                 }
             } catch (error) {
                 console.log(`❌ Mining error: ${error.message}`);
-                this.bot.chat(`❌ Mining failed: ${error.message}`);
+                console.log(`❌ Mining failed: ${error.message}`);
                 break;
             }
 
@@ -57,7 +57,7 @@ export class EnhancedMiningManager {
             }
         }
 
-        this.bot.chat(`✅ Enhanced mining completed: ${collected}/${num} ${blockType}`);
+        console.log(`✅ Enhanced mining completed: ${collected}/${num} ${blockType}`);
         return collected > 0;
     }
 
@@ -214,7 +214,7 @@ export class EnhancedMiningManager {
     async harvestLiquid(targetBlock) {
         const bucket = this.bot.inventory.items().find(item => item.name === 'bucket');
         if (!bucket) {
-            this.bot.chat(`Need bucket to collect ${targetBlock.name}`);
+            console.log(`Need bucket to collect ${targetBlock.name}`);
             return false;
         }
 

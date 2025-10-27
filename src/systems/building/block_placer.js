@@ -347,7 +347,7 @@ export class BuildExecutor {
 
             // Nur pausieren, nicht abbrechen
             if (errors > 75) {
-              this.bot.chat('⏸️ Pausiere für Fehlerkorrektur. Build kann später fortgesetzt werden.');
+              console.log('⏸️ Pausiere für Fehlerkorrektur. Build kann später fortgesetzt werden.');
               return { success: false, reason: 'Error recovery needed', canResume: true, blocksPlaced, errors };
             }
           }
@@ -361,7 +361,7 @@ export class BuildExecutor {
       const duration = ((Date.now() - this.currentBuild.startTime) / 1000).toFixed(1);
       const successRate = Math.round((blocksPlaced / (blocksPlaced + errors)) * 100);
 
-      this.bot.chat(`✅ Build complete! ${blocksPlaced} blocks in ${duration}s (${successRate}%)`);
+      console.log(`✅ Build complete! ${blocksPlaced} blocks in ${duration}s (${successRate}%)`);
 
       return { blocksPlaced, errors, duration };
 

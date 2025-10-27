@@ -361,7 +361,7 @@ export class SurvivalBuildCoordinator {
       if (nonCriticalMaterials.some(ncm => material.includes(ncm))) {
         if (stillMissing[material]) {
           console.log(`⚠️ Skipping non-critical material: ${material}`);
-          this.bot.chat(`⚠️ Überspringe optionales Material: ${material}`);
+          console.log(`⚠️ Überspringe optionales Material: ${material}`);
           delete stillMissing[material];
           continue;
         }
@@ -424,9 +424,9 @@ export class SurvivalBuildCoordinator {
 
       // Strategy 3: If difficult material or failed multiple times, ask for help
       if (category === 'difficult' || this.gatheringRetries[material] >= 3) {
-        this.bot.chat(`⏸️ Konnte ${material} nach ${this.gatheringRetries[material]} Versuchen nicht beschaffen.`);
-        this.bot.chat(`💬 Kannst du mir helfen ${count}x ${material} zu besorgen?`);
-        this.bot.chat(`📝 Ideen: ${this.getSuggestionsForGathering(material)}`);
+        console.log(`⏸️ Konnte ${material} nach ${this.gatheringRetries[material]} Versuchen nicht beschaffen.`);
+        console.log(`💬 Kannst du mir helfen ${count}x ${material} zu besorgen?`);
+        console.log(`📝 Ideen: ${this.getSuggestionsForGathering(material)}`);
 
         // Notify LLM
         if (this.agent && this.agent.history) {
@@ -587,9 +587,9 @@ export class SurvivalBuildCoordinator {
 
         if (!success) {
           // Pause and ask for help instead of failing immediately
-          this.bot.chat(`⏸️ Konnte ${material} nicht automatisch beschaffen.`);
-          this.bot.chat(`💬 Kannst du mir helfen ${count}x ${material} zu besorgen?`);
-          this.bot.chat(`📝 Ideen: ${this.getSuggestionsForGathering(material)}`);
+          console.log(`⏸️ Konnte ${material} nicht automatisch beschaffen.`);
+          console.log(`💬 Kannst du mir helfen ${count}x ${material} zu besorgen?`);
+          console.log(`📝 Ideen: ${this.getSuggestionsForGathering(material)}`);
 
           // Notify LLM via history so it can respond
           if (this.agent && this.agent.history) {
@@ -617,7 +617,7 @@ export class SurvivalBuildCoordinator {
 
     // Step 4: Execute crafting steps
     if (resolved.craftingSteps.length > 0) {
-      this.bot.chat('🔨 Crafte Items...');
+      console.log('🔨 Crafte Items...');
 
       for (const [material, count] of Object.entries(stillMissing)) {
         const currentInventory = this.getInventoryCounts();
@@ -629,7 +629,7 @@ export class SurvivalBuildCoordinator {
 
         const needToCraft = count - inInventory;
 
-        this.bot.chat(`🔨 Crafte: ${needToCraft}x ${material}`);
+        console.log(`🔨 Crafte: ${needToCraft}x ${material}`);
 
         const craftSuccess = await this.smartCraftingManager.craftIntelligently(
           material,
@@ -998,7 +998,7 @@ export class SurvivalBuildCoordinator {
         console.log(`✅ Current layer ${state.currentLayer} already complete, moving to next layer`);
       }
 
-      this.bot.chat(`🔄 Fortsetzen ab Schicht ${startLayerIndex + 1}/${sortedLayers.length}`);
+      console.log(`🔄 Fortsetzen ab Schicht ${startLayerIndex + 1}/${sortedLayers.length}`);
 
       let blocksPlaced = 0;
       let errors = 0;
@@ -1032,8 +1032,8 @@ export class SurvivalBuildCoordinator {
             if (procureResult.needsHelp) {
               // Pause and wait for help
               this.pauseBuild('waiting_for_help');
-              this.bot.chat(`⏸️ Build pausiert. Waiting for help with ${procureResult.failed}.`);
-              this.bot.chat(`Use !buildresume when materials are ready.`);
+              console.log(`⏸️ Build pausiert. Waiting for help with ${procureResult.failed}.`);
+              console.log(`Use !buildresume when materials are ready.`);
               return { success: false, reason: `Waiting for help: ${procureResult.failed}`, canResume: true, needsHelp: true };
             } else {
               console.log(`❌ Konnte ${procureResult.failed} nicht beschaffen!`);
@@ -1051,7 +1051,7 @@ export class SurvivalBuildCoordinator {
         // Health check
         if (this.bot.health < 6) {
           this.pauseBuild('low_health');
-          this.bot.chat('⚠️ Niedrige Gesundheit! Bau pausiert. Nutze !buildresume zum Fortsetzen.');
+          console.log('⚠️ Niedrige Gesundheit! Bau pausiert. Nutze !buildresume zum Fortsetzen.');
           return { success: false, reason: 'Paused due to low health', canResume: true };
         }
 
@@ -1085,7 +1085,7 @@ export class SurvivalBuildCoordinator {
           await new Promise(r => setTimeout(r, settings.block_place_delay || 800));
 
           if (errors > 30) {
-            this.bot.chat('❌ Zu viele Fehler, Bau pausiert.');
+            console.log('❌ Zu viele Fehler, Bau pausiert.');
             this.pauseBuild('too_many_errors');
             return { success: false, reason: 'Too many errors', canResume: true };
           }
@@ -1121,7 +1121,7 @@ export class SurvivalBuildCoordinator {
 
     } catch (error) {
       console.error('❌ Build error:', error);
-      this.bot.chat(`❌ Baufehler: ${error.message}`);
+      console.log(`❌ Baufehler: ${error.message}`);
 
       if (this.buildState) {
         this.pauseBuild('error');
@@ -1144,7 +1144,7 @@ export class SurvivalBuildCoordinator {
       const layers = this.organizeByLayer(schematicData, position);
       const sortedLayers = Array.from(layers.keys()).sort((a, b) => a - b);
 
-      this.bot.chat(`🏗️ Starte Bau: ${sortedLayers.length} Schichten, ${this.buildState.totalBlocks} Blöcke gesamt`);
+      console.log(`🏗️ Starte Bau: ${sortedLayers.length} Schichten, ${this.buildState.totalBlocks} Blöcke gesamt`);
 
       // Phase 3: Build layer-by-layer with per-layer material gathering
       let blocksPlaced = 0;
@@ -1181,8 +1181,8 @@ export class SurvivalBuildCoordinator {
             if (procureResult.needsHelp) {
               // Pause and wait for help - LLM will handle this
               this.pauseBuild('waiting_for_help');
-              this.bot.chat(`⏸️ Build paused. Waiting for help with ${procureResult.failed}.`);
-              this.bot.chat(`Use !buildresume when materials are ready.`);
+              console.log(`⏸️ Build paused. Waiting for help with ${procureResult.failed}.`);
+              console.log(`Use !buildresume when materials are ready.`);
               return { success: false, reason: `Waiting for help: ${procureResult.failed}`, canResume: true, needsHelp: true };
             } else {
               console.log(`❌ Konnte ${procureResult.failed} nicht beschaffen!`);
@@ -1200,7 +1200,7 @@ export class SurvivalBuildCoordinator {
         // Check if we should pause (health check)
         if (this.bot.health < 6) {
           this.pauseBuild('low_health');
-          this.bot.chat('⚠️ Niedrige Gesundheit! Bau pausiert. Nutze !buildresume zum Fortsetzen.');
+          console.log('⚠️ Niedrige Gesundheit! Bau pausiert. Nutze !buildresume zum Fortsetzen.');
           return { success: false, reason: 'Paused due to low health', canResume: true };
         }
 
@@ -1234,7 +1234,7 @@ export class SurvivalBuildCoordinator {
           await new Promise(r => setTimeout(r, settings.block_place_delay || 800));
 
           if (errors > 30) {
-            this.bot.chat('❌ Zu viele Fehler, Bau pausiert.');
+            console.log('❌ Zu viele Fehler, Bau pausiert.');
             this.pauseBuild('too_many_errors');
             return { success: false, reason: 'Too many errors', canResume: true };
           }
@@ -1257,7 +1257,7 @@ export class SurvivalBuildCoordinator {
       const duration = ((Date.now() - this.buildState.startTime) / 1000).toFixed(1);
       const successRate = Math.round((blocksPlaced / (blocksPlaced + errors)) * 100);
 
-      this.bot.chat(`✅ Bau abgeschlossen! ${blocksPlaced} Blöcke in ${duration}s (${successRate}%)`);
+      console.log(`✅ Bau abgeschlossen! ${blocksPlaced} Blöcke in ${duration}s (${successRate}%)`);
 
       // Clear build state and delete file
       this.deleteBuildState();
@@ -1272,7 +1272,7 @@ export class SurvivalBuildCoordinator {
 
     } catch (error) {
       console.error('❌ Build error:', error);
-      this.bot.chat(`❌ Baufehler: ${error.message}`);
+      console.log(`❌ Baufehler: ${error.message}`);
 
       if (this.buildState) {
         this.pauseBuild('error');

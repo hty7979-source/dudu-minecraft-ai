@@ -280,13 +280,26 @@ export function createCombatMode(execute, say) {
                 this.fleeMessageSent = true;
             }
 
+            // Move away from enemies
             await skills.avoidEnemies(bot, 15);
 
-            // Try to eat if possible - use consume instead of eat
+            // Try to eat if food available (quick attempt, don't force it)
             try {
-                await skills.consume(bot, "");
+                const foodInInventory = bot.inventory.items().some(item => {
+                    try {
+                        return item.foodPoints !== undefined && item.foodPoints > 0;
+                    } catch (e) {
+                        return false;
+                    }
+                });
+
+                if (foodInInventory) {
+                    await skills.consume(bot);
+                    console.log(`[COMBAT] Ate food while fleeing`);
+                }
             } catch (error) {
-                console.log(`Could not consume food: ${error.message}`);
+                // Ignore - food not critical during combat
+                console.log(`[COMBAT] Could not eat: ${error.message}`);
             }
         },
         

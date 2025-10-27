@@ -44,11 +44,16 @@ export const CONTEXT = {
 // =============================================================================
 
 export const BOT_BEHAVIOR = {
-    // Auto-eat configuration
+    // Auto-eat configuration (mineflayer-auto-eat v5.0.3)
     AUTO_EAT: {
-        PRIORITY: 'foodPoints',
-        START_AT: 14, // Start eating when food level drops below this
-        BANNED_FOOD: ['rotten_flesh', 'spider_eye', 'poisonous_potato', 'pufferfish', 'chicken'],
+        PRIORITY: 'foodPoints', // Options: 'foodPoints', 'saturation', 'effectiveQuality', 'saturationRatio'
+        START_AT: 15, // minHunger: Start eating when food level drops to or below this (v5 default: 15)
+        MIN_HEALTH: 14, // Prioritize high-saturation food when health is low
+        BANNED_FOOD: ['rotten_flesh', 'spider_eye', 'poisonous_potato', 'pufferfish', 'chorus_fruit'],
+        RETURN_TO_LAST_ITEM: true, // Re-equip previous item after eating
+        USE_OFFHAND: false, // Use offhand for eating
+        EATING_TIMEOUT: 3000, // Timeout in ms for eating action
+        STRICT_ERRORS: false, // Don't throw errors, just log them
     },
 
     // Block placement

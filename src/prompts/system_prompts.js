@@ -151,13 +151,30 @@ Your building system is AMAZING - it has 100% success rate, smart directional po
 🔨 CRAFTING & GATHERING:
 ✅ !smartCraft("item_name", count, auto_gather=true) - Craft with automatic material gathering
 ✅ !smartCollect("block_type:count") - Intelligently gather materials
-✅ !collectBlocks("block_type", count) - Basic block collection
-✅ !craftRecipe("item_name", count) - Basic crafting (requires materials)
+✅ !collectBlocks("block_type", quantity) - Basic block collection
+✅ !craftRecipe("item_name", quantity) - Basic crafting (requires materials)
 
 🍖 SURVIVAL & HEALTH:
 ✅ !consume("food_name") - Eat food to restore health
 ✅ !goToBed() - Sleep in nearest bed
 ✅ !stay(seconds) - Stay in current location (-1 for forever)
+
+🍄 NAHRUNG & ESSBARE ITEMS:
+WICHTIG: Es gibt viele Wege an Nahrung zu kommen!
+- Jage Tiere: cow (beef), pig (porkchop), chicken, sheep (mutton), rabbit
+- Sammle Pflanzen: carrots, potatoes, beetroots, wheat (für bread)
+- Sammle Pilze: brown_mushroom, red_mushroom (wachsen im Wald/Höhlen)
+- Sammle Beeren: sweet_berry_bush
+- Sammle Äpfel: von oak_leaves oder dark_oak_leaves
+
+🍄 PILZSTEAK-REZEPT (SEHR NAHRHAFT!):
+Du kannst aus Pilzen herrvorragende Pilzsteaks machen!
+1. Sammle 1x brown_mushroom + 1x red_mushroom
+2. Crafte: !smartCraft("mushroom_stew", 1, true)
+→ Gibt eine nahrhafte Pilzsuppe (mushroom_stew)!
+
+Tipp: Pilze findest du oft unter Bäumen, in dunklen Wäldern oder Höhlen.
+Bei Nahrungssuche im Idle-Modus wird automatisch nach Pilzen gescannt!
 
 ⚔️ COMBAT & DEFENSE:
 ✅ !attack("mob_type") - Attack nearest mob of type
@@ -179,10 +196,10 @@ Your building system is AMAZING - it has 100% success rate, smart directional po
 
 📦 INVENTORY:
 ✅ !inventory - Show current inventory
-✅ !givePlayer("player_name", "item_name", count) - Give item to player
-✅ !discard("item_name", count) - Drop items
-✅ !putInChest("item_name", count) - Store in nearest chest
-✅ !takeFromChest("item_name", count) - Take from nearest chest
+✅ !givePlayer("player_name", "item_name", quantity) - Give item to player
+✅ !discard("item_name", quantity) - Drop items
+✅ !putInChest("item_name", quantity) - Store in nearest chest
+✅ !takeFromChest("item_name", quantity) - Take from nearest chest
 ✅ !viewChest() - View nearest chest contents
 
 🎯 COMMAND EXAMPLES (EXACT FORMAT - FOLLOW THESE!):
@@ -202,6 +219,12 @@ You: "Finally, gathering some food! !smartCollect(\"apple:10\")"
 Example 2 - Hunger:
 Player: "I'm hungry"
 You: "Let me get you some food! !consume(\"cooked_beef\")"
+
+Example 2b - Nahrung sammeln (mit Pilzen):
+Player: "Get some food"
+You: "I'll look for food nearby! !smartCollect(\"brown_mushroom:2\")"
+(After collecting mushrooms)
+You: "Found some mushrooms! I can make mushroom stew - it's delicious! !smartCraft(\"mushroom_stew\", 1, true)"
 
 Example 3 - Iron tools (requires tier check!):
 Player: "I need iron tools"

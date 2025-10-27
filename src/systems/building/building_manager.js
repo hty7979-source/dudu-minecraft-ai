@@ -173,29 +173,29 @@ export class BuildingManager {
     
     const player = this.bot.players[playerUsername].entity;
     const distanceToPlayer = this.bot.entity.position.distanceTo(player.position);
-    
+
     if (distanceToPlayer > 4.0) {
-      this.bot.chat(`🤖 Moving to ${playerUsername}...`);
+      console.log(`🤖 Moving to ${playerUsername}...`);
       const success = await this.playerLocator.goToPlayer(playerUsername, 3);
       if (!success) {
         return `❌ Could not reach player ${playerUsername}`;
       }
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    
+
     // Berechne Build-Position
     if (!position) {
       if (!schematicInfo.size) {
         await this.registry.loadSchematicData(schematicInfo);
       }
       position = this.playerLocator.calculateBuildPosition(
-        player.position, 
-        player.yaw, 
+        player.position,
+        player.yaw,
         schematicInfo.size
       );
     }
-    
-    this.bot.chat(`🗂️ Building ${schematicName} at ${position.x}, ${position.y}, ${position.z}`);
+
+    console.log(`🗂️ Building ${schematicName} at ${position.x}, ${position.y}, ${position.z}`);
     
     // Lade Schematic-Daten
     const schematicData = await this.registry.loadSchematicData(schematicInfo);
@@ -217,7 +217,7 @@ export class BuildingManager {
     if (this.survivalCoordinator.buildState) {
       const buildName = this.survivalCoordinator.buildState.schematicName;
       this.survivalCoordinator.deleteBuildState();
-      this.bot.chat(`❌ Survival build cancelled: ${buildName}`);
+      console.log(`❌ Survival build cancelled: ${buildName}`);
       return `Cancelled builds: ${executorResult} and survival build ${buildName}`;
     }
 
@@ -297,7 +297,7 @@ export class BuildingManager {
       );
     }
 
-    this.bot.chat(`🏗️ Starte Survival-Bau: ${schematicName}`);
+    console.log(`🏗️ Starte Survival-Bau: ${schematicName}`);
 
     // Load schematic data
     const schematicData = await this.registry.loadSchematicData(schematicInfo);
@@ -370,7 +370,7 @@ export class BuildingManager {
       return `Schematic "${schematicName}" not found.`;
     }
 
-    this.bot.chat('📊 Analysiere Materialien...');
+    console.log('📊 Analysiere Materialien...');
 
     // Load schematic data
     const schematicData = await this.registry.loadSchematicData(schematicInfo);
@@ -433,11 +433,11 @@ export class BuildingManager {
     const progress = `${state.placedBlocks.size}/${state.totalBlocks}`;
     const percent = Math.round((state.placedBlocks.size / state.totalBlocks) * 100);
 
-    this.bot.chat(`▶️ Setze Bau fort: ${state.schematicName}`);
-    this.bot.chat(`📊 Fortschritt: ${progress} Blöcke (${percent}%) | Layer ${state.currentLayer}`);
+    console.log(`▶️ Setze Bau fort: ${state.schematicName}`);
+    console.log(`📊 Fortschritt: ${progress} Blöcke (${percent}%) | Layer ${state.currentLayer}`);
 
     if (state.pauseReason) {
-      this.bot.chat(`💡 Pausiert wegen: ${state.pauseReason}`);
+      console.log(`💡 Pausiert wegen: ${state.pauseReason}`);
     }
 
     // Resume build state (sets status back to 'building')

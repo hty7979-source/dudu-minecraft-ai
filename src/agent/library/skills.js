@@ -438,6 +438,46 @@ export async function collectBlock(bot, blockType, num=1, exclude=null) {
         blocktypes.push('grass_block');
     if (blockType === 'cobblestone')
         blocktypes.push('stone');
+
+    // Support alternative wood types (for deserts, taigas, etc.)
+    // Handle generic "_log" request (from MaterialPlanner)
+    if (blockType === '_log' || blockType.endsWith('_log')) {
+        // Accept ALL log types
+        const allWoodTypes = mc.WOOD_TYPES; // ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry']
+
+        // Clear original if generic "_log" request
+        if (blockType === '_log') {
+            blocktypes = [];
+        }
+
+        for (const woodType of allWoodTypes) {
+            const logType = `${woodType}_log`;
+            if (!blocktypes.includes(logType)) {
+                blocktypes.push(logType);
+            }
+        }
+        log(bot, `Looking for any wood log: ${blocktypes.slice(0, 3).join(', ')}...`);
+    }
+
+    // Support alternative planks
+    // Handle generic "_planks" request (from MaterialPlanner)
+    if (blockType === '_planks' || blockType.endsWith('_planks')) {
+        const allWoodTypes = mc.WOOD_TYPES;
+
+        // Clear original if generic "_planks" request
+        if (blockType === '_planks') {
+            blocktypes = [];
+        }
+
+        for (const woodType of allWoodTypes) {
+            const planksType = `${woodType}_planks`;
+            if (!blocktypes.includes(planksType)) {
+                blocktypes.push(planksType);
+            }
+        }
+        log(bot, `Looking for any wood planks: ${blocktypes.slice(0, 3).join(', ')}...`);
+    }
+
     const isLiquid = blockType === 'lava' || blockType === 'water';
 
     let collected = 0;
@@ -450,31 +490,70 @@ export async function collectBlock(bot, blockType, num=1, exclude=null) {
     const unsafeBlocks = ['obsidian'];
 
     for (let i=0; i<num; i++) {
-        let blocks = world.getNearestBlocksWhere(bot, block => {
-            if (!blocktypes.includes(block.name)) {
-                return false;
-            }
-            if (exclude) {
-                for (let position of exclude) {
-                    if (block.position.x === position.x && block.position.y === position.y && block.position.z === position.z) {
-                        return false;
+        // Increased search radius for better resource discovery
+        // Wood: 128 blocks (for sparse biomes like desert)
+        // Other resources: 64 blocks (default)
+        const searchRadius = (blockType.endsWith('_log') || blockType === '_log') ? 128 : 64;
+
+        // For wood in sparse biomes: Try multiple search attempts with travel
+        const isWoodSearch = blockType === '_log' || blockType.endsWith('_log');
+        const maxSearchAttempts = isWoodSearch ? 4 : 1; // Wood: 4 attempts, others: 1
+        const travelDistance = 30; // Blocks to travel between attempts
+
+        let blocks = [];
+        let searchAttempt = 0;
+
+        // Iterative search with travel
+        while (blocks.length === 0 && searchAttempt < maxSearchAttempts) {
+            searchAttempt++;
+
+            blocks = world.getNearestBlocksWhere(bot, block => {
+                if (!blocktypes.includes(block.name)) {
+                    return false;
+                }
+                if (exclude) {
+                    for (let position of exclude) {
+                        if (block.position.x === position.x && block.position.y === position.y && block.position.z === position.z) {
+                            return false;
+                        }
                     }
                 }
+                if (isLiquid) {
+                    // collect only source blocks
+                    return block.metadata === 0;
+                }
+
+                return movements.safeToBreak(block) || unsafeBlocks.includes(block.name);
+            }, searchRadius, 1);
+
+            // If nothing found and we have more attempts, travel and try again
+            if (blocks.length === 0 && searchAttempt < maxSearchAttempts) {
+                log(bot, `Search attempt ${searchAttempt}/${maxSearchAttempts}: No ${blockType} found. Traveling ${travelDistance} blocks...`);
+
+                // Travel in a consistent direction (north)
+                const currentPos = bot.entity.position;
+                const targetX = currentPos.x;
+                const targetZ = currentPos.z - travelDistance; // North
+                const targetY = currentPos.y;
+
+                try {
+                    await goToPosition(bot, targetX, targetY, targetZ, 2);
+                    log(bot, `Traveled to new location. Searching again...`);
+                } catch (error) {
+                    log(bot, `Failed to travel: ${error.message}`);
+                    break; // Stop trying if we can't move
+                }
             }
-            if (isLiquid) {
-                // collect only source blocks
-                return block.metadata === 0;
-            }
-            
-            return movements.safeToBreak(block) || unsafeBlocks.includes(block.name);
-        }, 64, 1);
+        }
 
         if (blocks.length === 0) {
-            if (collected === 0)
-                log(bot, `No ${blockType} nearby to collect.`);
-            else
+            if (collected === 0) {
+                log(bot, `❌ No ${blockType} found after ${searchAttempt} search attempts (covered ~${searchAttempt * travelDistance} blocks).`);
+                return false; // Return false if nothing collected at all
+            } else {
                 log(bot, `No more ${blockType} nearby to collect.`);
-            break;
+                break;
+            }
         }
         const block = blocks[0];
         await bot.tool.equipForBlock(block);
@@ -537,7 +616,26 @@ export async function pickupNearbyItems(bot) {
      * await skills.pickupNearbyItems(bot);
      **/
     const distance = 8;
-    const getNearestItem = bot => bot.nearestEntity(entity => entity.name === 'item' && bot.entity.position.distanceTo(entity.position) < distance);
+    const getNearestItem = bot => {
+        try {
+            return bot.nearestEntity(entity => {
+                try {
+                    return entity &&
+                           entity.name === 'item' &&
+                           entity.position &&
+                           bot.entity &&
+                           bot.entity.position &&
+                           bot.entity.position.distanceTo(entity.position) < distance;
+                } catch (error) {
+                    // Entity hat fehlerhafte Metadaten
+                    return false;
+                }
+            });
+        } catch (error) {
+            // Fehler beim Entity-Lookup
+            return null;
+        }
+    };
     let nearestItem = getNearestItem(bot);
     let pickedUp = 0;
     while (nearestItem) {
@@ -972,25 +1070,46 @@ export async function viewChest(bot) {
 
 export async function consume(bot, itemName="") {
     /**
-     * Eat/drink the given item.
+     * Eat/drink the given item. If no item specified, auto-select best food.
      * @param {MinecraftBot} bot, reference to the minecraft bot.
-     * @param {string} itemName, the item to eat/drink.
+     * @param {string} itemName, the item to eat/drink (optional).
      * @returns {Promise<boolean>} true if the item was eaten, false otherwise.
      * @example
-     * await skills.eat(bot, "apple");
+     * await skills.consume(bot, "apple");
+     * await skills.consume(bot); // Auto-select best food
      **/
     let item, name;
-    if (itemName) {
+
+    // If specific item requested, find it
+    if (itemName && itemName.trim() !== "") {
         item = bot.inventory.items().find(item => item.name === itemName);
         name = itemName;
+    } else {
+        // Auto-select best food from inventory
+        const foodItems = bot.inventory.items().filter(item => {
+            try {
+                return item.foodPoints !== undefined && item.foodPoints > 0;
+            } catch (e) {
+                return false;
+            }
+        });
+
+        if (foodItems.length > 0) {
+            // Sort by food points (descending) - eat best food first
+            foodItems.sort((a, b) => (b.foodPoints || 0) - (a.foodPoints || 0));
+            item = foodItems[0];
+            name = item.name;
+        }
     }
+
     if (!item) {
-        log(bot, `You do not have any ${name} to eat.`);
+        console.log(`[FOOD] No food available to eat`);
         return false;
     }
+
     await bot.equip(item, 'hand');
     await bot.consume();
-    log(bot, `Consumed ${item.name}.`);
+    console.log(`[FOOD] Consumed ${item.name} (+${item.foodPoints || '?'} food)`);
     return true;
 }
 
