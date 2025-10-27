@@ -621,10 +621,28 @@ export class SmartFoodManager {
         let hunted = 0;
 
         for (let i = 0; i < amount && i < 5; i++) { // Max 5 Tiere
-            const entity = this.bot.nearestEntity(e =>
-                e.name === animal &&
-                e.position.distanceTo(this.bot.entity.position) < 32
-            );
+            let entity = null;
+
+            try {
+                // Sicherer Entity-Lookup mit Fehlerbehandlung
+                entity = this.bot.nearestEntity(e => {
+                    try {
+                        return e &&
+                               e.name === animal &&
+                               e.position &&
+                               e.type === 'mob' &&
+                               this.bot.entity &&
+                               this.bot.entity.position &&
+                               e.position.distanceTo(this.bot.entity.position) < 32;
+                    } catch (error) {
+                        // Entity hat fehlerhafte Metadaten
+                        return false;
+                    }
+                });
+            } catch (error) {
+                console.log(`⚠️ Error finding ${animal}: ${error.message}`);
+                break;
+            }
 
             if (!entity) {
                 break;
@@ -709,9 +727,13 @@ export class SmartFoodManager {
 
             if (recipe.source === 'harvest') {
                 try {
-                    await skills.collectBlock(this.bot, recipe.blocks[0], amount);
-                    return true;
+                    const success = await skills.collectBlock(this.bot, recipe.blocks[0], amount);
+                    if (!success) {
+                        console.log(`⚠️ Failed to gather ${ingredient} from ${recipe.blocks[0]}`);
+                    }
+                    return success;
                 } catch (error) {
+                    console.log(`⚠️ Error gathering ${ingredient}: ${error.message}`);
                     return false;
                 }
             }
@@ -719,18 +741,23 @@ export class SmartFoodManager {
 
         // Versuche zu craften (z.B. bowl, sugar)
         try {
-            await skills.craftRecipe(this.bot, ingredient, amount);
-            return true;
+            const success = await skills.craftRecipe(this.bot, ingredient, amount);
+            if (success) {
+                return true;
+            }
         } catch (error) {
-            // Kann nicht gecraftet werden
+            // Kann nicht gecraftet werden, versuche weiter
         }
 
         // Versuche zu sammeln
         try {
-            await skills.collectBlock(this.bot, ingredient, amount);
-            return true;
+            const success = await skills.collectBlock(this.bot, ingredient, amount);
+            if (!success) {
+                console.log(`⚠️ Cannot gather ${ingredient} - not found nearby`);
+            }
+            return success;
         } catch (error) {
-            console.log(`⚠️ Cannot gather ${ingredient}`);
+            console.log(`⚠️ Error gathering ${ingredient}: ${error.message}`);
             return false;
         }
     }
@@ -766,18 +793,32 @@ export class SmartFoodManager {
 
     scanNearbyAnimals() {
         const animals = {};
-        const entities = Object.values(this.bot.entities);
 
-        for (const entity of entities) {
-            if (!entity.position) continue;
+        try {
+            const entities = Object.values(this.bot.entities);
 
-            const distance = entity.position.distanceTo(this.bot.entity.position);
-            if (distance > 32) continue;
+            for (const entity of entities) {
+                try {
+                    // Sichere Prüfung: Entity muss position, name haben und ein Mob sein
+                    if (!entity || !entity.position || !entity.name || entity.type !== 'mob') continue;
 
-            const name = entity.name;
-            if (['cow', 'pig', 'chicken', 'sheep', 'rabbit'].includes(name)) {
-                animals[name] = (animals[name] || 0) + 1;
+                    // Sicherer Distanz-Check mit Fallback
+                    if (!this.bot.entity || !this.bot.entity.position) continue;
+
+                    const distance = entity.position.distanceTo(this.bot.entity.position);
+                    if (distance > 32) continue;
+
+                    const name = entity.name;
+                    if (['cow', 'pig', 'chicken', 'sheep', 'rabbit'].includes(name)) {
+                        animals[name] = (animals[name] || 0) + 1;
+                    }
+                } catch (entityError) {
+                    // Entity hat fehlerhafte Metadaten - überspringen
+                    continue;
+                }
             }
+        } catch (error) {
+            // Silently ignore PartialReadError - sehr häufig und nicht kritisch
         }
 
         return animals;

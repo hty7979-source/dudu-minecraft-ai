@@ -4,6 +4,30 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { readFileSync } from 'fs';
 
+// Suppress known protodef PartialReadError spam (MC 1.21+ compatibility issue)
+// See: https://github.com/PrismarineJS/mineflayer/issues/3756
+let protodefWarningShown = false;
+const originalStderrWrite = process.stderr.write.bind(process.stderr);
+process.stderr.write = (chunk, encoding, callback) => {
+    const str = chunk.toString();
+
+    // Filter out PartialReadError entity_metadata spam
+    if (str.includes('PartialReadError') && str.includes('entity_metadata')) {
+        if (!protodefWarningShown) {
+            originalStderrWrite('\n⚠️  Known issue: PartialReadError with entity_metadata (MC 1.21+). Bot continues working normally.\n');
+            originalStderrWrite('   See: https://github.com/PrismarineJS/mineflayer/issues/3756\n');
+            originalStderrWrite('   These errors will be suppressed to reduce console spam.\n\n');
+            protodefWarningShown = true;
+        }
+        // Suppress the actual error
+        if (typeof callback === 'function') callback();
+        return true;
+    }
+
+    // Pass through all other stderr writes
+    return originalStderrWrite(chunk, encoding, callback);
+};
+
 function parseArguments() {
     return yargs(hideBin(process.argv))
         .option('profiles', {

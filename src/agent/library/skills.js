@@ -616,7 +616,26 @@ export async function pickupNearbyItems(bot) {
      * await skills.pickupNearbyItems(bot);
      **/
     const distance = 8;
-    const getNearestItem = bot => bot.nearestEntity(entity => entity.name === 'item' && bot.entity.position.distanceTo(entity.position) < distance);
+    const getNearestItem = bot => {
+        try {
+            return bot.nearestEntity(entity => {
+                try {
+                    return entity &&
+                           entity.name === 'item' &&
+                           entity.position &&
+                           bot.entity &&
+                           bot.entity.position &&
+                           bot.entity.position.distanceTo(entity.position) < distance;
+                } catch (error) {
+                    // Entity hat fehlerhafte Metadaten
+                    return false;
+                }
+            });
+        } catch (error) {
+            // Fehler beim Entity-Lookup
+            return null;
+        }
+    };
     let nearestItem = getNearestItem(bot);
     let pickedUp = 0;
     while (nearestItem) {

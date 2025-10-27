@@ -59,6 +59,7 @@ export class MaterialPlanner {
 
     /**
      * Holt das aktuelle Inventar als Object
+     * Aggregiert auch spezifische Holz-Typen zu generischen Platzhaltern
      */
     getCurrentInventory() {
         const inventory = {};
@@ -66,6 +67,18 @@ export class MaterialPlanner {
 
         for (const item of items) {
             inventory[item.name] = (inventory[item.name] || 0) + item.count;
+
+            // Aggregiere alle Log-Typen zu generischem "_log"
+            // (oak_log, spruce_log, birch_log, jungle_log, acacia_log, dark_oak_log, mangrove_log, cherry_log)
+            if (item.name.endsWith('_log')) {
+                inventory['_log'] = (inventory['_log'] || 0) + item.count;
+            }
+
+            // Aggregiere alle Planks-Typen zu generischem "_planks"
+            // (oak_planks, spruce_planks, birch_planks, etc.)
+            if (item.name.endsWith('_planks')) {
+                inventory['_planks'] = (inventory['_planks'] || 0) + item.count;
+            }
         }
 
         return inventory;
@@ -150,13 +163,49 @@ export class MaterialPlanner {
     }
 
     /**
-     * Erstellt einen spezialisierten Plan für Iron Tools
+     * Erstellt einen spezialisierten Plan für Iron Tools + Shield
+     * Materialbedarf: 8 Iron Ingots + Sticks + Planks
      */
     createIronToolsPlan() {
         return this.createPlan([
             { item: 'iron_pickaxe', count: 1 },
             { item: 'iron_axe', count: 1 },
-            { item: 'iron_sword', count: 1 }
+            { item: 'iron_sword', count: 1 },
+            { item: 'iron_shovel', count: 1 },
+            { item: 'shield', count: 1 }
+        ]);
+    }
+
+    /**
+     * Erstellt einen spezialisierten Plan für Iron Armor (nur Rüstung)
+     * Materialbedarf: 24 Iron Ingots
+     */
+    createIronArmorPlan() {
+        return this.createPlan([
+            { item: 'iron_helmet', count: 1 },
+            { item: 'iron_chestplate', count: 1 },
+            { item: 'iron_leggings', count: 1 },
+            { item: 'iron_boots', count: 1 }
+        ]);
+    }
+
+    /**
+     * Erstellt einen kombinierten Plan für Iron Tools + Armor + Shield
+     */
+    createFullIronSetPlan() {
+        return this.createPlan([
+            // Tools
+            { item: 'iron_pickaxe', count: 1 },
+            { item: 'iron_axe', count: 1 },
+            { item: 'iron_sword', count: 1 },
+            { item: 'iron_shovel', count: 1 },
+            // Armor
+            { item: 'iron_helmet', count: 1 },
+            { item: 'iron_chestplate', count: 1 },
+            { item: 'iron_leggings', count: 1 },
+            { item: 'iron_boots', count: 1 },
+            // Shield
+            { item: 'shield', count: 1 }
         ]);
     }
 
@@ -199,6 +248,15 @@ export class MaterialPlanner {
             'iron_axe': { iron_ingot: 3, stick: 2 },
             'iron_sword': { iron_ingot: 2, stick: 1 },
             'iron_shovel': { iron_ingot: 1, stick: 2 },
+
+            // Iron Armor
+            'iron_helmet': { iron_ingot: 5 },
+            'iron_chestplate': { iron_ingot: 8 },
+            'iron_leggings': { iron_ingot: 7 },
+            'iron_boots': { iron_ingot: 4 },
+
+            // Shield
+            'shield': { iron_ingot: 1, '_planks': 6 },
 
             // Crafting basics - Using generic _log and _planks for flexibility
             '_planks': { '_log': 0.25 },          // 1 log = 4 planks (ANY wood type)

@@ -178,10 +178,22 @@ export function getNearestBlock(bot, block_type, distance=16) {
 
 export function getNearbyEntities(bot, maxDistance=16) {
     let entities = [];
-    for (const entity of Object.values(bot.entities)) {
-        const distance = entity.position.distanceTo(bot.entity.position);
-        if (distance > maxDistance) continue;
-        entities.push({ entity: entity, distance: distance });
+    try {
+        for (const entity of Object.values(bot.entities)) {
+            try {
+                // Sichere Prüfung gegen PartialReadError
+                if (!entity || !entity.position || !bot.entity || !bot.entity.position) continue;
+
+                const distance = entity.position.distanceTo(bot.entity.position);
+                if (distance > maxDistance) continue;
+                entities.push({ entity: entity, distance: distance });
+            } catch (entityError) {
+                // Entity hat fehlerhafte Metadaten - überspringen
+                continue;
+            }
+        }
+    } catch (error) {
+        // Silently ignore PartialReadError - sehr häufig und nicht kritisch
     }
     entities.sort((a, b) => a.distance - b.distance);
     let res = [];
@@ -192,19 +204,48 @@ export function getNearbyEntities(bot, maxDistance=16) {
 }
 
 export function getNearestEntityWhere(bot, predicate, maxDistance=16) {
-    return bot.nearestEntity(entity => predicate(entity) && bot.entity.position.distanceTo(entity.position) < maxDistance);
+    try {
+        return bot.nearestEntity(entity => {
+            try {
+                return entity &&
+                       entity.position &&
+                       bot.entity &&
+                       bot.entity.position &&
+                       predicate(entity) &&
+                       bot.entity.position.distanceTo(entity.position) < maxDistance;
+            } catch (error) {
+                // Entity hat fehlerhafte Metadaten
+                return false;
+            }
+        });
+    } catch (error) {
+        console.log(`⚠️ Error finding entity: ${error.message}`);
+        return null;
+    }
 }
 
 
 export function getNearbyPlayers(bot, maxDistance) {
     if (maxDistance == null) maxDistance = 16;
     let players = [];
-    for (const entity of Object.values(bot.entities)) {
-        const distance = entity.position.distanceTo(bot.entity.position);
-        if (distance > maxDistance) continue;
-        if (entity.type == 'player' && entity.username != bot.username) {
-            players.push({ entity: entity, distance: distance });
-        } 
+    try {
+        for (const entity of Object.values(bot.entities)) {
+            try {
+                // Sichere Prüfung gegen PartialReadError
+                if (!entity || !entity.position || !bot.entity || !bot.entity.position) continue;
+
+                const distance = entity.position.distanceTo(bot.entity.position);
+                if (distance > maxDistance) continue;
+                if (entity.type == 'player' && entity.username != bot.username) {
+                    players.push({ entity: entity, distance: distance });
+                }
+            } catch (entityError) {
+                // Entity hat fehlerhafte Metadaten - überspringen
+                continue;
+            }
+        }
+    } catch (error) {
+        // Silently ignore PartialReadError - sehr häufig und nicht kritisch
     }
     players.sort((a, b) => a.distance - b.distance);
     let res = [];
