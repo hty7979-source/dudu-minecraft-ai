@@ -191,26 +191,32 @@ export class ContextualMemory {
         const items = bot.inventory.items();
 
         // Tools - Check for PICKAXE specifically (needed for progression!)
-        // Having a sword alone is not enough - we need pickaxe + axe for full toolset
+        // Having just one tool is enough to indicate we have this tier
+        // (Bot might have stored other tools or lost them)
         const hasWoodenPickaxe = items.some(i => i.name === 'wooden_pickaxe');
         const hasWoodenAxe = items.some(i => i.name === 'wooden_axe');
-        this.equipment.hasWoodenTools = hasWoodenPickaxe && hasWoodenAxe;
+        const hasWoodenSword = items.some(i => i.name === 'wooden_sword');
+        this.equipment.hasWoodenTools = hasWoodenPickaxe || hasWoodenAxe || hasWoodenSword;
 
         const hasStonePickaxe = items.some(i => i.name === 'stone_pickaxe');
         const hasStoneAxe = items.some(i => i.name === 'stone_axe');
-        this.equipment.hasStoneTools = hasStonePickaxe && hasStoneAxe;
+        const hasStoneSword = items.some(i => i.name === 'stone_sword');
+        this.equipment.hasStoneTools = hasStonePickaxe || hasStoneAxe || hasStoneSword;
 
         const hasIronPickaxe = items.some(i => i.name === 'iron_pickaxe');
         const hasIronAxe = items.some(i => i.name === 'iron_axe');
-        this.equipment.hasIronTools = hasIronPickaxe && hasIronAxe;
+        const hasIronSword = items.some(i => i.name === 'iron_sword');
+        this.equipment.hasIronTools = hasIronPickaxe || hasIronAxe || hasIronSword;
 
         const hasDiamondPickaxe = items.some(i => i.name === 'diamond_pickaxe');
         const hasDiamondAxe = items.some(i => i.name === 'diamond_axe');
-        this.equipment.hasDiamondTools = hasDiamondPickaxe && hasDiamondAxe;
+        const hasDiamondSword = items.some(i => i.name === 'diamond_sword');
+        this.equipment.hasDiamondTools = hasDiamondPickaxe || hasDiamondAxe || hasDiamondSword;
 
         const hasNetheritePickaxe = items.some(i => i.name === 'netherite_pickaxe');
         const hasNetheriteAxe = items.some(i => i.name === 'netherite_axe');
-        this.equipment.hasNetheriteTools = hasNetheritePickaxe && hasNetheriteAxe;
+        const hasNetheriteSword = items.some(i => i.name === 'netherite_sword');
+        this.equipment.hasNetheriteTools = hasNetheritePickaxe || hasNetheriteAxe || hasNetheriteSword;
 
         // Armor
         this.equipment.hasIronArmor = items.some(i => i.name.includes('iron_') &&

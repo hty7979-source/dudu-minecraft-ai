@@ -172,7 +172,6 @@ export class IdleTaskGenerator {
      */
     async checkToolDurability() {
         const bot = this.agent.bot;
-        const memory = this.agent.contextual_memory;
 
         if (this.isOnCooldown('repair_tools')) return false;
 
@@ -217,9 +216,8 @@ export class IdleTaskGenerator {
                 console.log('🔨 Replacing worn tools...');
 
                 for (const tool of brokenTools) {
-                    // Bestimme Tool-Tier
+                    // Bestimme Replacement Tool
                     let replacement = null;
-                    const toolTier = memory.getBestToolTier();
 
                     // Mappe Tool-Namen zu Tier
                     if (tool.name.includes('wooden_')) {
@@ -293,17 +291,31 @@ export class IdleTaskGenerator {
 
                 if (result.success) {
                     console.log(`✅ Food obtained: ${result.foodObtained}x ${result.foodType || 'food'}`);
-                } else {
-                    console.log('⚠️ Could not obtain food through smart system, trying fallback...');
+                    console.log('✅ Food task completed');
+                    return; // Erfolg
+                }
 
-                    // Fallback: Einfaches Jagen
-                    const animals = ['cow', 'pig', 'chicken', 'sheep', 'rabbit'];
-                    let hunted = 0;
+                console.log('⚠️ Could not obtain food through smart system, trying fallback...');
 
-                    for (let i = 0; i < 3; i++) {
+                // Fallback 1: Jagen mit Exploration (priorisiert verschiedene Tierarten)
+                const animalPriority = ['cow', 'pig', 'sheep', 'chicken', 'horse', 'rabbit']; // Reihenfolge: beste → schlechteste
+                let hunted = 0;
+                const targetHunts = 3;
+                const maxSearchAttempts = 3;
+                const travelDistance = 40; // Blocks to travel between attempts
+                const searchRadius = 64;
+                const huntedAnimals = new Set(); // Track welche Tiere bereits gejagt wurden
+
+                for (let attempt = 1; attempt <= maxSearchAttempts && hunted < targetHunts; attempt++) {
+                    console.log(`🔍 Animal search attempt ${attempt}/${maxSearchAttempts}...`);
+
+                    // Versuche jede Tierart nacheinander (priorisiert)
+                    for (const animalType of animalPriority) {
+                        if (hunted >= targetHunts) break;
+
                         const animal = agent.bot.nearestEntity(entity =>
-                            animals.includes(entity.name) &&
-                            entity.position.distanceTo(agent.bot.entity.position) < 32
+                            entity.name === animalType &&
+                            entity.position.distanceTo(agent.bot.entity.position) < searchRadius
                         );
 
                         if (animal) {
@@ -311,18 +323,71 @@ export class IdleTaskGenerator {
                             try {
                                 await skills.attackEntity(agent.bot, animal);
                                 hunted++;
+                                huntedAnimals.add(animalType);
+                                console.log(`  ✓ Hunted ${animalType} (${hunted}/${targetHunts})`);
                             } catch (error) {
-                                console.log(`⚠️ Hunt failed: ${error.message}`);
+                                console.log(`  ⚠️ Hunt failed: ${error.message}`);
                             }
                         }
                     }
 
-                    if (hunted > 0) {
-                        console.log(`✅ Fallback successful: Hunted ${hunted} animals`);
+                    // If we got enough, we're done
+                    if (hunted >= targetHunts) break;
+
+                    // If not last attempt and didn't find enough, travel and try again
+                    if (attempt < maxSearchAttempts) {
+                        console.log(`Found ${hunted}/${targetHunts} animals. Traveling ${travelDistance} blocks...`);
+                        const currentPos = agent.bot.entity.position;
+                        const targetX = currentPos.x + (Math.random() * travelDistance * 2 - travelDistance);
+                        const targetZ = currentPos.z + (Math.random() * travelDistance * 2 - travelDistance);
+
+                        try {
+                            await skills.goToPosition(agent.bot, targetX, currentPos.y, targetZ, 2);
+                        } catch (error) {
+                            console.log(`⚠️ Travel failed: ${error.message}`);
+                        }
                     }
                 }
 
-                console.log('✅ Food task completed');
+                if (hunted > 0) {
+                    console.log(`✅ Fallback successful: Hunted ${hunted} animals`);
+                    console.log('✅ Food task completed');
+                    return;
+                }
+
+                // Fallback 2: Pilze sammeln (mushroom stew)
+                console.log('🍄 Fallback 2: Searching for mushrooms...');
+                try {
+                    const brownMushrooms = await skills.collectBlock(agent.bot, 'brown_mushroom', 1);
+                    const redMushrooms = await skills.collectBlock(agent.bot, 'red_mushroom', 1);
+
+                    if (brownMushrooms && redMushrooms) {
+                        // Try to craft bowl from planks
+                        const planksTypes = ['oak_planks', 'spruce_planks', 'birch_planks', 'jungle_planks', 'acacia_planks', 'dark_oak_planks'];
+                        let hasBowl = false;
+
+                        for (const planks of planksTypes) {
+                            const inv = world.getInventoryCounts(agent.bot);
+                            if (inv[planks] >= 3) {
+                                await skills.craftRecipe(agent.bot, 'bowl', 1);
+                                hasBowl = true;
+                                break;
+                            }
+                        }
+
+                        if (hasBowl) {
+                            await skills.craftRecipe(agent.bot, 'mushroom_stew', 1);
+                            console.log('✅ Crafted mushroom stew from wild mushrooms');
+                            console.log('✅ Food task completed');
+                            return;
+                        }
+                    }
+                } catch (error) {
+                    console.log(`⚠️ Mushroom gathering failed: ${error.message}`);
+                }
+
+                // Nothing worked
+                throw new Error('Failed to obtain food: No food sources available (no ingredients to craft, no animals to hunt, no mushrooms found)');
             },
             {
                 timeout: 180000, // 3 Minuten
@@ -410,14 +475,19 @@ export class IdleTaskGenerator {
         // Prüfe welches Upgrade als nächstes ansteht
         let needsWoodenTools = (toolTier === 'none');
         let needsStoneTools = (toolTier === 'wooden');
-        let needsIronTools = false;
+        let needsIronTools = (toolTier === 'stone');
 
-        if (toolTier === 'stone') {
-            // Prüfe ob genug Eisen vorhanden
-            const ironCount = bot.inventory.items()
-                .filter(i => i.name === 'iron_ingot')
-                .reduce((sum, i) => sum + i.count, 0);
-            needsIronTools = (ironCount >= 9); // 3 für pickaxe, 3 für axe, 3 für sword
+        // Für Iron Tools: Prüfe ob wir bereits komplettes Iron Set haben
+        if (needsIronTools) {
+            const inv = bot.inventory.items();
+            const hasIronPickaxe = inv.some(i => i.name === 'iron_pickaxe');
+            const hasIronHelmet = inv.some(i => i.name === 'iron_helmet');
+            const hasShield = inv.some(i => i.name === 'shield');
+
+            // Wenn wir bereits alles haben, kein Upgrade nötig
+            if (hasIronPickaxe && hasIronHelmet && hasShield) {
+                needsIronTools = false;
+            }
         }
 
         if (!needsWoodenTools && !needsStoneTools && !needsIronTools) {
@@ -427,7 +497,7 @@ export class IdleTaskGenerator {
         // Zeige an was gebraucht wird
         if (needsWoodenTools) console.log('🔧 Tool upgrade available: none → wooden');
         if (needsStoneTools) console.log('🔧 Tool upgrade available: wooden → stone');
-        if (needsIronTools) console.log('🔧 Tool upgrade available: stone → iron');
+        if (needsIronTools) console.log('🔧 Tool upgrade available: stone → iron (full set)');
 
         await this.agent.taskQueue.runTask(
             'upgrade_tools',
@@ -442,7 +512,7 @@ export class IdleTaskGenerator {
                         agent.bot.chat('✅ Ich habe Steinwerkzeuge hergestellt');
                     } else if (needsIronTools) {
                         await this.craftIronTools(agent);
-                        agent.bot.chat('✅ Ich habe Eisenwerkzeuge hergestellt');
+                        agent.bot.chat('✅ Ich habe Eisenwerkzeuge, Rüstung und Schild hergestellt');
                     }
 
                     console.log('✅ Tool upgrade completed!');
@@ -552,7 +622,7 @@ export class IdleTaskGenerator {
             await skills.craftRecipe(agent.bot, 'stick', Math.ceil(sticksNeeded / 4)); // 4 sticks per 2 planks
         }
 
-        // PHASE 4: Craft Tools
+        // PHASE 4: Craft Tools (only if we don't already have them!)
         console.log('🔨 Phase 3: Crafting tools...');
 
         const tools = [
@@ -562,6 +632,13 @@ export class IdleTaskGenerator {
         ];
 
         for (const tool of tools) {
+            // Check if we already have this tool
+            const alreadyHave = agent.bot.inventory.items().some(i => i.name === tool.name);
+            if (alreadyHave) {
+                console.log(`  ✓ ${tool.display} already in inventory (skipping)`);
+                continue;
+            }
+
             console.log(`  → Crafting ${tool.display}...`);
             await skills.craftRecipe(agent.bot, tool.name, 1);
             console.log(`  ✓ ${tool.display} crafted`);
@@ -631,7 +708,7 @@ export class IdleTaskGenerator {
             await skills.craftRecipe(agent.bot, 'stick', Math.ceil(sticksNeeded / 4)); // 4 sticks per 2 planks
         }
 
-        // PHASE 4: Craft Tools + Furnace
+        // PHASE 4: Craft Tools + Furnace (only if we don't already have them!)
         console.log('🔨 Phase 3: Crafting tools & utilities...');
 
         const items = [
@@ -642,6 +719,13 @@ export class IdleTaskGenerator {
         ];
 
         for (const item of items) {
+            // Check if we already have this item
+            const alreadyHave = agent.bot.inventory.items().some(i => i.name === item.name);
+            if (alreadyHave) {
+                console.log(`  ✓ ${item.display} already in inventory (skipping)`);
+                continue;
+            }
+
             console.log(`  → Crafting ${item.display}...`);
             await skills.craftRecipe(agent.bot, item.name, 1);
             console.log(`  ✓ ${item.display} crafted`);
@@ -653,68 +737,128 @@ export class IdleTaskGenerator {
     }
 
     /**
-     * STUFE 3: Eisenwerkzeuge craften
-     * Voraussetzung: Eisen bereits vorhanden (iron_ingot)
+     * STUFE 3: Eisenwerkzeuge + Rüstung + Schild craften
+     * Workflow: Iron Ore sammeln → Kohle sammeln → Erz schmelzen → Alles craften
      */
     async craftIronTools(agent) {
-        console.log('🔥 === STAGE 3: Crafting Iron Tools ===\n');
+        console.log('🔥 === STAGE 3: Crafting Iron Tools + Armor + Shield ===\n');
 
         // PHASE 1: Material-Planung
-        const plan = this.materialPlanner.createIronToolsPlan();
+        const plan = this.materialPlanner.createFullIronSetPlan();
         console.log(this.materialPlanner.summarizePlan(plan));
         console.log('');
 
-        // PHASE 2: Sammle Rohstoffe (iron_ingot + sticks)
-        const gatheringPlan = this.materialPlanner.createGatheringPlan(plan.toGather);
-
-        if (gatheringPlan.length > 0) {
-            console.log('📦 Phase 1: Gathering raw materials...');
-
-            for (const task of gatheringPlan) {
-                console.log(`  → Gathering ${task.amount}x ${task.item}...`);
-
-                const success = await skills.collectBlock(agent.bot, task.item, task.amount);
-                if (!success) {
-                    throw new Error(`Failed to gather ${task.item} - not found nearby`);
-                }
-
-                // Verify
-                const inventory = this.materialPlanner.getCurrentInventory();
-                const nowHave = inventory[task.item] || 0;
-                if (nowHave < task.needed) {
-                    throw new Error(`Still missing ${task.item}: have ${nowHave}, need ${task.needed}`);
-                }
-
-                console.log(`  ✓ Gathered ${task.item} (now have ${nowHave})`);
-            }
-            console.log('✅ Phase 1: All raw materials gathered!\n');
-        } else {
-            console.log('✅ Phase 1: All materials already available!\n');
-        }
-
-        // PHASE 3: Craft intermediate materials first
-        console.log('🔨 Phase 2: Crafting intermediate materials...');
-
         const inventory = this.materialPlanner.getCurrentInventory();
-        const sticksNeeded = 5; // 1+2+2 for sword, axe, pickaxe
 
-        // Craft sticks from planks/logs if needed
-        if ((inventory['stick'] || 0) < sticksNeeded) {
-            console.log('  → Crafting sticks...');
-            // First ensure we have planks
-            if ((inventory['oak_planks'] || 0) < 2) {
-                await skills.craftRecipe(agent.bot, 'oak_planks', 1);
+        // Berechne wie viel iron_ingot wir brauchen
+        const ironNeeded = plan.toGather['iron_ingot'] || 0;
+        const ironHave = inventory['iron_ingot'] || 0;
+        const ironToSmelt = Math.max(0, ironNeeded - ironHave);
+
+        console.log(`📊 Iron Status: Have ${ironHave}, Need ${ironNeeded}, Must smelt ${ironToSmelt}`);
+
+        // PHASE 2: Sammle Iron Ore (wenn nötig)
+        if (ironToSmelt > 0) {
+            console.log(`\n⛏️ Phase 1: Mining ${ironToSmelt}x iron ore...`);
+
+            const oreSuccess = await skills.collectBlock(agent.bot, 'iron_ore', ironToSmelt);
+            if (!oreSuccess) {
+                throw new Error('Failed to gather iron_ore - not found nearby');
             }
-            await skills.craftRecipe(agent.bot, 'stick', Math.ceil(sticksNeeded / 4)); // 4 sticks per 2 planks
+
+            const oreHave = this.materialPlanner.getCurrentInventory()['iron_ore'] || 0;
+            console.log(`  ✓ Mined iron ore (now have ${oreHave})`);
+
+            // PHASE 3: Sammle Coal für Smelting (1 coal = 8 items, aber nehmen wir etwas mehr)
+            const coalNeeded = Math.ceil(ironToSmelt / 8) + 2; // +2 als Buffer
+            console.log(`\n🪨 Phase 2: Gathering ${coalNeeded}x coal for fuel...`);
+
+            const coalSuccess = await skills.collectBlock(agent.bot, 'coal', coalNeeded);
+            if (!coalSuccess) {
+                throw new Error('Failed to gather coal - not found nearby');
+            }
+
+            const coalHave = this.materialPlanner.getCurrentInventory()['coal'] || 0;
+            console.log(`  ✓ Gathered coal (now have ${coalHave})`);
+
+            // PHASE 4: Schmelze Iron Ore → Iron Ingots
+            console.log(`\n🔥 Phase 3: Smelting ${ironToSmelt}x iron ore → iron ingots...`);
+
+            const smeltSuccess = await skills.smeltItem(agent.bot, 'iron_ore', ironToSmelt);
+            if (!smeltSuccess) {
+                throw new Error('Failed to smelt iron ore');
+            }
+
+            const ingotsHave = this.materialPlanner.getCurrentInventory()['iron_ingot'] || 0;
+            console.log(`  ✓ Smelted iron (now have ${ingotsHave} ingots)`);
+        } else {
+            console.log('✅ Phase 1-3: Already have enough iron ingots!\n');
         }
 
-        // PHASE 4: Craft Iron Tools
-        console.log('🔨 Phase 3: Crafting iron tools...');
+        // PHASE 5: Craft sticks (wenn nötig)
+        console.log('🔨 Phase 4: Preparing intermediate materials...');
+
+        const currentInv = this.materialPlanner.getCurrentInventory();
+        const sticksNeeded = 7; // 2+2+2+1 for pickaxe, axe, sword, shovel
+        const sticksHave = currentInv['stick'] || 0;
+
+        if (sticksHave < sticksNeeded) {
+            console.log(`  → Crafting sticks (have ${sticksHave}, need ${sticksNeeded})...`);
+
+            // Find any available planks
+            const planksTypes = ['oak_planks', 'spruce_planks', 'birch_planks', 'jungle_planks', 'acacia_planks', 'dark_oak_planks'];
+            let planksType = null;
+
+            for (const type of planksTypes) {
+                if (currentInv[type] >= 2) {
+                    planksType = type;
+                    break;
+                }
+            }
+
+            if (!planksType) {
+                // Craft planks from any available log
+                const logTypes = ['oak_log', 'spruce_log', 'birch_log', 'jungle_log', 'acacia_log', 'dark_oak_log'];
+                for (const logType of logTypes) {
+                    if (currentInv[logType] >= 1) {
+                        const planksName = logType.replace('_log', '_planks');
+                        await skills.craftRecipe(agent.bot, planksName, 1);
+                        planksType = planksName;
+                        break;
+                    }
+                }
+            }
+
+            if (planksType) {
+                await skills.craftRecipe(agent.bot, 'stick', Math.ceil((sticksNeeded - sticksHave) / 4));
+            }
+        }
+
+        // Craft planks for shield (6 needed)
+        const planksNeeded = 6;
+        const planksHave = currentInv['_planks'] || 0; // Aggregated count
+
+        if (planksHave < planksNeeded) {
+            console.log(`  → Crafting planks for shield (have ${planksHave}, need ${planksNeeded})...`);
+            // Find any available log and craft planks
+            const logTypes = ['oak_log', 'spruce_log', 'birch_log', 'jungle_log', 'acacia_log', 'dark_oak_log'];
+            for (const logType of logTypes) {
+                if (currentInv[logType] >= 2) {
+                    const planksName = logType.replace('_log', '_planks');
+                    await skills.craftRecipe(agent.bot, planksName, 2);
+                    break;
+                }
+            }
+        }
+
+        // PHASE 6: Craft Tools
+        console.log('\n🔨 Phase 5: Crafting iron tools...');
 
         const tools = [
             { name: 'iron_sword', display: 'Iron Sword' },
             { name: 'iron_axe', display: 'Iron Axe' },
-            { name: 'iron_pickaxe', display: 'Iron Pickaxe' }
+            { name: 'iron_pickaxe', display: 'Iron Pickaxe' },
+            { name: 'iron_shovel', display: 'Iron Shovel' }
         ];
 
         for (const tool of tools) {
@@ -723,7 +867,30 @@ export class IdleTaskGenerator {
             console.log(`  ✓ ${tool.display} crafted`);
         }
 
-        console.log('✅ Phase 2: All tools crafted!');
+        // PHASE 7: Craft Armor
+        console.log('\n🛡️ Phase 6: Crafting iron armor...');
+
+        const armor = [
+            { name: 'iron_helmet', display: 'Iron Helmet' },
+            { name: 'iron_chestplate', display: 'Iron Chestplate' },
+            { name: 'iron_leggings', display: 'Iron Leggings' },
+            { name: 'iron_boots', display: 'Iron Boots' }
+        ];
+
+        for (const piece of armor) {
+            console.log(`  → Crafting ${piece.display}...`);
+            await skills.craftRecipe(agent.bot, piece.name, 1);
+            console.log(`  ✓ ${piece.display} crafted`);
+        }
+
+        // PHASE 8: Craft Shield
+        console.log('\n🛡️ Phase 7: Crafting shield...');
+        console.log('  → Crafting Shield...');
+        await skills.craftRecipe(agent.bot, 'shield', 1);
+        console.log('  ✓ Shield crafted');
+
+        console.log('\n✅ All items crafted!');
+        console.log('💪 Bot is now fully equipped with iron gear!');
         console.log('🎉 STAGE 3 COMPLETE!\n');
     }
 
@@ -778,14 +945,16 @@ export class IdleTaskGenerator {
      * LOW: Workbench sicherstellen
      */
     async checkWorkbench() {
-        const memory = this.agent.contextual_memory;
+        const bot = this.agent.bot;
 
         if (this.isOnCooldown('get_workbench')) return false;
-        if (memory.inventory.crafting_table) return false;
+
+        // Better check: Look in actual inventory, not just memory
+        const hasCraftingTable = bot.inventory.items().some(i => i.name === 'crafting_table');
+        if (hasCraftingTable) return false;
 
         // Prüfe ob Holz vorhanden
-        const hasLogs = this.agent.bot.inventory.items().some(i => i.name.includes('log'));
-
+        const hasLogs = bot.inventory.items().some(i => i.name.includes('log'));
         if (!hasLogs) return false;
 
         console.log('🔨 No crafting table detected');
@@ -797,6 +966,13 @@ export class IdleTaskGenerator {
                 console.log('🔨 Crafting workbench...');
 
                 try {
+                    // Check again before crafting
+                    const alreadyHave = agent.bot.inventory.items().some(i => i.name === 'crafting_table');
+                    if (alreadyHave) {
+                        console.log('✅ Crafting table already in inventory (skipping)');
+                        return;
+                    }
+
                     await smartCraft(agent.bot, 'crafting_table', 1, skills);
                     console.log('✅ Crafted crafting table');
                 } catch (error) {
