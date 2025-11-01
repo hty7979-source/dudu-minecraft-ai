@@ -630,7 +630,7 @@ export class SmartFoodManager {
                         return e &&
                                e.name === animal &&
                                e.position &&
-                               e.type === 'mob' &&
+                               (e.type === 'mob' || e.type === 'animal') && // WICHTIG: Passive Tiere haben type 'animal'!
                                this.bot.entity &&
                                this.bot.entity.position &&
                                e.position.distanceTo(this.bot.entity.position) < 32;
@@ -799,8 +799,8 @@ export class SmartFoodManager {
 
             for (const entity of entities) {
                 try {
-                    // Sichere Prüfung: Entity muss position, name haben und ein Mob sein
-                    if (!entity || !entity.position || !entity.name || entity.type !== 'mob') continue;
+                    // Sichere Prüfung: Entity muss position, name haben und ein Mob/Animal sein
+                    if (!entity || !entity.position || !entity.name || (entity.type !== 'mob' && entity.type !== 'animal')) continue;
 
                     // Sicherer Distanz-Check mit Fallback
                     if (!this.bot.entity || !this.bot.entity.position) continue;

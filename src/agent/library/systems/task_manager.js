@@ -303,6 +303,14 @@ export class TaskManager {
         this.completedTasks = [];
         this.taskQueue = [];
         this.currentTask = null;
+
+        // Prioritäts-Konstanten
+        this.PRIORITY = {
+            CRITICAL: 100,    // LLM-Befehle, Spieler-Befehle
+            HIGH: 50,         // Tool-Upgrades, wichtige Tasks
+            NORMAL: 25,       // Standard-Tasks
+            LOW: 10          // Idle-Tasks, Background-Tasks
+        };
         
         // Gedächtnisfunktion
         this.memory = bot.memory || {};
@@ -337,9 +345,9 @@ export class TaskManager {
     /**
      * Erstellt eine neue komplexe Aufgabe
      */
-    async createComplexTask(taskName, requirements, description = '') {
+    async createComplexTask(taskName, requirements, description = '', priority = null) {
         console.log(`🎯 Creating complex task: ${taskName}`);
-        
+
         const task = {
             id: this.generateTaskId(),
             name: taskName,
@@ -349,6 +357,7 @@ export class TaskManager {
             createdAt: new Date(),
             subtasks: [],
             dependencies: {},
+            priority: priority !== null ? priority : this.PRIORITY.NORMAL,
             progress: {
                 completed: 0,
                 total: 0
@@ -357,10 +366,11 @@ export class TaskManager {
 
         // Analysiere Anforderungen und erstelle Subtasks
         await this.analyzeRequirements(task);
-        
-        // Füge zur Task-Queue hinzu
+
+        // Füge zur Task-Queue hinzu und sortiere nach Priorität
         this.taskQueue.push(task);
-        
+        this.sortTaskQueueByPriority();
+
         // Speichere in Gedächtnis
         this.memory.taskHistory.push({
             taskId: task.id,
@@ -368,9 +378,59 @@ export class TaskManager {
             createdAt: task.createdAt,
             status: 'CREATED'
         });
-        
-        console.log(`✅ Created task "${taskName}" with ${task.subtasks.length} subtasks`);
+
+        console.log(`✅ Created task "${taskName}" with ${task.subtasks.length} subtasks (Priority: ${task.priority})`);
         return task;
+    }
+
+    /**
+     * Fügt einen Task direkt mit höchster Priorität ein (für LLM/Spieler-Befehle)
+     */
+    async addCriticalTask(taskName, requirements, description = '') {
+        console.log(`⚡ Adding CRITICAL task: ${taskName}`);
+        return await this.createComplexTask(taskName, requirements, description, this.PRIORITY.CRITICAL);
+    }
+
+    /**
+     * Fügt einen einfachen Task direkt in die Queue ein
+     * Nützlich für direkte Befehle ohne komplexe Anforderungen
+     */
+    addDirectTask(taskName, executeFunction, priority = null) {
+        const task = {
+            id: this.generateTaskId(),
+            name: taskName,
+            description: 'Direct command execution',
+            status: 'PLANNED',
+            createdAt: new Date(),
+            priority: priority !== null ? priority : this.PRIORITY.CRITICAL,
+            isDirect: true,
+            executeFunction: executeFunction,
+            subtasks: [],
+            progress: {
+                completed: 0,
+                total: 1
+            }
+        };
+
+        this.taskQueue.push(task);
+        this.sortTaskQueueByPriority();
+
+        console.log(`⚡ Added direct task: ${taskName} (Priority: ${task.priority})`);
+        return task;
+    }
+
+    /**
+     * Sortiert die Task-Queue nach Priorität (höchste zuerst)
+     */
+    sortTaskQueueByPriority() {
+        this.taskQueue.sort((a, b) => {
+            // Höhere Priorität zuerst
+            if (b.priority !== a.priority) {
+                return b.priority - a.priority;
+            }
+            // Bei gleicher Priorität: ältere Tasks zuerst
+            return a.createdAt - b.createdAt;
+        });
     }
 
     /**
@@ -709,23 +769,35 @@ export class TaskManager {
             console.log('📋 No tasks in queue');
             return false;
         }
-        
+
+        // Queue ist automatisch nach Priorität sortiert
         const task = this.taskQueue.shift();
         this.currentTask = task;
         task.status = 'IN_PROGRESS';
         task.startedAt = new Date();
-        
-        console.log(`🚀 Starting task: ${task.name}`);
-        
+
+        const priorityLabel = task.priority >= this.PRIORITY.CRITICAL ? '⚡ CRITICAL' :
+                             task.priority >= this.PRIORITY.HIGH ? '🔥 HIGH' :
+                             task.priority >= this.PRIORITY.NORMAL ? '📋 NORMAL' : '💤 LOW';
+
+        console.log(`🚀 Starting task [${priorityLabel}]: ${task.name}`);
+
         try {
-            await this.executeTaskSubtasks(task);
-            
+            // Für direkte Tasks: führe die übergebene Funktion aus
+            if (task.isDirect && task.executeFunction) {
+                await task.executeFunction();
+                task.progress.completed = 1;
+            } else {
+                // Für normale Tasks: führe Subtasks aus
+                await this.executeTaskSubtasks(task);
+            }
+
             task.status = 'COMPLETED';
             task.completedAt = new Date();
             this.completedTasks.push(task);
-            
+
             console.log(`✅ Completed task: ${task.name}`);
-            
+
             // Aktualisiere Gedächtnis
             this.memory.taskHistory.push({
                 taskId: task.id,
@@ -734,9 +806,9 @@ export class TaskManager {
                 completedAt: task.completedAt,
                 duration: task.completedAt - task.startedAt
             });
-            
+
             return true;
-            
+
         } catch (error) {
             console.log(`❌ Task failed: ${task.name} - ${error.message}`);
             task.status = 'FAILED';
@@ -1033,12 +1105,28 @@ export class TaskManager {
 /**
  * Hauptfunktionen für Integration in Mindcraft
  */
-export async function createComplexTask(bot, taskName, requirements, skillsFunctions = null) {
+export async function createComplexTask(bot, taskName, requirements, skillsFunctions = null, priority = null) {
     const taskManager = new TaskManager(bot, skillsFunctions);
-    return await taskManager.createComplexTask(taskName, requirements);
+    return await taskManager.createComplexTask(taskName, requirements, '', priority);
 }
 
-export async function executeTask(bot, taskId, skillsFunctions = null) {
+/**
+ * Fügt einen Task mit höchster Priorität hinzu (für LLM/Spieler-Befehle)
+ */
+export async function addCriticalTask(bot, taskName, requirements, skillsFunctions = null) {
+    const taskManager = new TaskManager(bot, skillsFunctions);
+    return await taskManager.addCriticalTask(taskName, requirements);
+}
+
+/**
+ * Fügt einen direkten Task mit Ausführungsfunktion hinzu
+ */
+export function addDirectTask(bot, taskName, executeFunction, priority = null, skillsFunctions = null) {
+    const taskManager = new TaskManager(bot, skillsFunctions);
+    return taskManager.addDirectTask(taskName, executeFunction, priority);
+}
+
+export async function executeTask(bot, skillsFunctions = null) {
     const taskManager = new TaskManager(bot, skillsFunctions);
     return await taskManager.executeNextTask();
 }

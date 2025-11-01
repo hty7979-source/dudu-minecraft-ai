@@ -27,6 +27,10 @@ export class BuildGoal {
                 if (position) break;
             }
         }
+        if (!position) {
+            console.warn('Could not find suitable position for building. No free space available.');
+            return false;
+        }
         if (orientation === null) {
             orientation = Math.floor(Math.random() * 4);
         }

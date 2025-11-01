@@ -81,6 +81,9 @@ export class IdleTaskGenerator {
         // 1. CRITICAL: Death Recovery (höchste Priorität!)
         if (await this.checkDeathRecovery()) return;
 
+        // 1.5. CRITICAL: Night Safety - Bei Nacht in Sicherheit gehen!
+        if (await this.checkNightSafety()) return;
+
         // 2. NORMAL: Grundbedürfnisse
         if (await this.checkFoodSupply()) return;
         if (await this.checkNighttime()) return;
@@ -121,6 +124,120 @@ export class IdleTaskGenerator {
     // ========================================================================
 
     /**
+     * CRITICAL: Night Safety - Schutz bei Nacht ohne Equipment
+     * Wenn der Bot nachts spawnt ohne Tools/Waffen, verstecke dich!
+     */
+    async checkNightSafety() {
+        const timeOfDay = this.agent.bot.time.timeOfDay;
+        const isNight = timeOfDay >= 13000 && timeOfDay <= 23000;
+
+        if (!isNight) return false;
+
+        const memory = this.agent.contextual_memory;
+        const hasBed = memory.inventory.bed;
+        const hasWeapon = this.agent.bot.inventory.items().some(item =>
+            item.name.includes('sword') || item.name.includes('axe')
+        );
+
+        // Wenn Bett vorhanden, nutze checkNighttime
+        if (hasBed) return false;
+
+        // Wenn Waffe vorhanden, nicht so kritisch
+        if (hasWeapon) return false;
+
+        // KRITISCH: Nachts ohne Waffe und ohne Bett!
+        if (this.isOnCooldown('night_safety')) return false;
+
+        console.log('🌙 NIGHT DANGER: No weapon, no bed - finding shelter!');
+
+        await this.agent.taskQueue.runTask(
+            'night_safety',
+            TaskPriority.HIGH, // Hohe Priorität - Überleben wichtig!
+            async (agent) => {
+                try {
+                    // Option 1: Finde existierenden Unterschlupf (Höhle, Haus)
+                    const shelter = agent.bot.findBlock({
+                        matching: (block) => {
+                            if (!block) return false;
+                            // Suche überdachte Bereiche
+                            const above = agent.bot.blockAt(block.position.offset(0, 1, 0));
+                            const twoAbove = agent.bot.blockAt(block.position.offset(0, 2, 0));
+                            return above && above.name !== 'air' && twoAbove && twoAbove.name !== 'air';
+                        },
+                        maxDistance: 32
+                    });
+
+                    if (shelter) {
+                        console.log('🏠 Found shelter, hiding until daylight!');
+                        await skills.goToPosition(agent.bot, shelter.position.x, shelter.position.y, shelter.position.z, 2);
+                        agent.bot.chat('🌙 Ich verstecke mich bis zum Morgen!');
+
+                        // Warte bis Tag (oder maximal 5 Minuten)
+                        const waitUntilDay = () => new Promise((resolve) => {
+                            const checkDay = setInterval(() => {
+                                const time = agent.bot.time.timeOfDay;
+                                if (time < 13000 || time > 23000) {
+                                    clearInterval(checkDay);
+                                    resolve();
+                                }
+                            }, 5000); // Alle 5 Sekunden prüfen
+
+                            // Timeout nach 5 Minuten
+                            setTimeout(() => {
+                                clearInterval(checkDay);
+                                resolve();
+                            }, 300000);
+                        });
+
+                        await waitUntilDay();
+                        console.log('☀️ Daylight! It\'s safe now.');
+                        agent.bot.chat('☀️ Es ist wieder Tag!');
+                        return;
+                    }
+
+                    // Option 2: Baue schnellen 3-Block-Turm (pillar up)
+                    console.log('🏗️ No shelter found - building emergency pillar!');
+                    const hasBlocks = agent.bot.inventory.items().some(item =>
+                        item.name.includes('dirt') ||
+                        item.name.includes('cobblestone') ||
+                        item.name.includes('planks')
+                    );
+
+                    if (hasBlocks) {
+                        // Baue 3 Blöcke hoch (Zombie können nicht springen)
+                        const block = agent.bot.inventory.items().find(item =>
+                            item.name.includes('dirt') || item.name.includes('cobblestone') || item.name.includes('planks')
+                        );
+
+                        agent.bot.chat('🏗️ Baue Notfall-Säule!');
+                        for (let i = 0; i < 3; i++) {
+                            await agent.bot.equip(block, 'hand');
+                            await agent.bot.placeBlock(agent.bot.blockAt(agent.bot.entity.position.offset(0, -1, 0)), new (require('vec3'))(0, 1, 0));
+                        }
+                        console.log('✅ Emergency pillar built - safe from zombies!');
+                        return;
+                    }
+
+                    // Option 3: Laufe weg von Spawns
+                    console.log('⚠️ No blocks for shelter - running away from spawn!');
+                    agent.bot.chat('🏃 Ich laufe weg!');
+                } catch (error) {
+                    console.error('❌ Night safety failed:', error.message);
+                }
+            },
+            {
+                timeout: 120000, // 2 Minuten max
+                resumable: false,
+                interruptible: true,
+                metadata: { type: 'night_safety' }
+            }
+        );
+
+        this.setCooldown('night_safety', 120000); // 2 Minuten Cooldown
+        return true;
+    }
+
+    /**
      * CRITICAL: Death Recovery - Items einsammeln nach Tod
      */
     async checkDeathRecovery() {
@@ -133,7 +250,30 @@ export class IdleTaskGenerator {
         const deathLoc = memory.getDeathLocation();
         const timeRemaining = memory.getRecoveryTimeRemaining();
 
-        console.log(`💀 Death recovery needed! ${timeRemaining}s remaining`);
+        // Prüfe ob es Nacht ist
+        const timeOfDay = this.agent.bot.time.timeOfDay;
+        const isNight = timeOfDay >= 13000 && timeOfDay <= 23000;
+
+        // Bei Nacht: Nur wenn weniger als 60 Sekunden verbleiben (dringend!)
+        if (isNight && timeRemaining > 60) {
+            console.log(`💀 Death recovery pending (${timeRemaining}s left), but waiting for daylight (currently night)`);
+            return false; // Warte bis Tag
+        }
+
+        // Prüfe auf nahe Zombies/Skelette
+        const nearbyMobs = this.agent.bot.nearestEntity(entity => {
+            if (!entity || !entity.name) return false;
+            const dangerousMobs = ['zombie', 'skeleton', 'creeper', 'spider'];
+            return dangerousMobs.includes(entity.name) &&
+                   entity.position.distanceTo(this.agent.bot.entity.position) < 16;
+        });
+
+        if (nearbyMobs && timeRemaining > 30) {
+            console.log(`💀 Death recovery pending, but dangerous mobs nearby - waiting for safety (${timeRemaining}s left)`);
+            return false; // Warte bis sicher
+        }
+
+        console.log(`💀 Death recovery needed! ${timeRemaining}s remaining${isNight ? ' (URGENT - night time!)' : ''}`);
 
         await this.agent.taskQueue.runTask(
             'death_recovery',
@@ -278,7 +418,7 @@ export class IdleTaskGenerator {
         const memory = this.agent.contextual_memory;
 
         if (this.isOnCooldown('gather_food')) return false;
-        if (memory.hasEnoughFood(3)) return false; // Mindestens 3 Food
+        if (memory.hasEnoughFood(10)) return false; // Mindestens 10 Food (Hälfte der Hungerleiste)
 
         console.log('🍖 Low food supply detected - starting Smart Food System');
 
@@ -299,7 +439,18 @@ export class IdleTaskGenerator {
 
                 console.log('⚠️ Could not obtain food through smart system, trying fallback...');
 
-                // Fallback 1: Jagen mit Exploration (priorisiert verschiedene Tierarten)
+                // Prüfe ob es Nacht ist - bei Nacht spawnen keine passiven Tiere
+                const timeOfDay = agent.bot.time.timeOfDay;
+                const isNight = timeOfDay >= 13000 && timeOfDay <= 23000;
+
+                if (isNight) {
+                    console.log('🌙 It\'s night time - skipping animal hunting (animals don\'t spawn at night)');
+                    console.log('   Skipping directly to mushroom gathering fallback...');
+                } else {
+                    console.log('☀️ It\'s daytime - animals should be available');
+                }
+
+                // Fallback 1: Jagen mit Exploration (priorisiert verschiedene Tierarten) - nur bei Tag
                 const animalPriority = ['cow', 'pig', 'sheep', 'chicken', 'horse', 'rabbit']; // Reihenfolge: beste → schlechteste
                 let hunted = 0;
                 const targetHunts = 3;
@@ -308,8 +459,31 @@ export class IdleTaskGenerator {
                 const searchRadius = 64;
                 const huntedAnimals = new Set(); // Track welche Tiere bereits gejagt wurden
 
-                for (let attempt = 1; attempt <= maxSearchAttempts && hunted < targetHunts; attempt++) {
+                for (let attempt = 1; attempt <= maxSearchAttempts && hunted < targetHunts && !isNight; attempt++) {
                     console.log(`🔍 Animal search attempt ${attempt}/${maxSearchAttempts}...`);
+
+                    // Debug: Zeige alle Entities in der Nähe
+                    try {
+                        const nearbyEntities = Object.values(agent.bot.entities)
+                            .filter(e => {
+                                try {
+                                    return e && e.position && agent.bot.entity && agent.bot.entity.position &&
+                                           e.position.distanceTo(agent.bot.entity.position) < searchRadius;
+                                } catch (err) {
+                                    return false;
+                                }
+                            })
+                            .map(e => `${e.name || e.displayName || 'unknown'}(type:${e.type},dist:${Math.round(e.position.distanceTo(agent.bot.entity.position))})`)
+                            .slice(0, 10); // Nur erste 10 zur Übersicht
+
+                        if (nearbyEntities.length > 0) {
+                            console.log(`  📋 Nearby entities (${nearbyEntities.length}): ${nearbyEntities.join(', ')}`);
+                        } else {
+                            console.log(`  ⚠️ No entities found within ${searchRadius} blocks`);
+                        }
+                    } catch (debugError) {
+                        console.log(`  ⚠️ Debug entity listing failed: ${debugError.message}`);
+                    }
 
                     // Versuche jede Tierart nacheinander (priorisiert)
                     for (const animalType of animalPriority) {
@@ -323,7 +497,7 @@ export class IdleTaskGenerator {
                                     return entity &&
                                            entity.name === animalType &&
                                            entity.position &&
-                                           entity.type === 'mob' &&
+                                           (entity.type === 'mob' || entity.type === 'animal') && // WICHTIG: Passive Tiere haben type 'animal'!
                                            agent.bot.entity &&
                                            agent.bot.entity.position &&
                                            entity.position.distanceTo(agent.bot.entity.position) < searchRadius;
@@ -339,6 +513,11 @@ export class IdleTaskGenerator {
 
                         if (animal) {
                             console.log(`🎯 Fallback: Hunting ${animal.name}...`);
+                        } else {
+                            console.log(`  ❌ No ${animalType} found within ${searchRadius} blocks`);
+                        }
+
+                        if (animal) {
                             try {
                                 await skills.attackEntity(agent.bot, animal);
                                 hunted++;

@@ -65,6 +65,10 @@ export async function craftRecipe(bot, itemName, num=1) {
             let hasTable = world.getInventoryCounts(bot)['crafting_table'] > 0;
             if (hasTable) {
                 let pos = world.getNearestFreeSpace(bot, 1, 6);
+                if (!pos) {
+                    log(bot, `No free space found to place crafting table.`);
+                    return false;
+                }
                 await placeBlock(bot, 'crafting_table', pos.x, pos.y, pos.z);
                 craftingTable = world.getNearestBlock(bot, 'crafting_table', craftingTableRange);
                 if (craftingTable) {
@@ -165,6 +169,10 @@ export async function smeltItem(bot, itemName, num=1) {
         let hasFurnace = world.getInventoryCounts(bot)['furnace'] > 0;
         if (hasFurnace) {
             let pos = world.getNearestFreeSpace(bot, 1, furnaceRange);
+            if (!pos) {
+                log(bot, `No free space found to place furnace.`);
+                return false;
+            }
             await placeBlock(bot, 'furnace', pos.x, pos.y, pos.z);
             furnaceBlock = world.getNearestBlock(bot, 'furnace', furnaceRange);
             placedFurnace = true;

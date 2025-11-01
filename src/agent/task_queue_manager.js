@@ -158,6 +158,7 @@ export class TaskQueueManager {
         this.tasks = new Map(); // task.id -> Task
         this.queue = []; // Sortierte Queue nach Priorität
         this.currentTask = null;
+        this.isProcessing = false; // Flag um Race Conditions zu verhindern
         this.taskIdCounter = 0;
         this.history = []; // Abgeschlossene Tasks (max 50)
         this.maxHistorySize = 50;
@@ -191,6 +192,12 @@ export class TaskQueueManager {
      * Fügt einen Task zur Queue hinzu
      */
     async enqueueTask(task) {
+        // Füge zur Queue hinzu (sortiert nach Priorität)
+        this.queue.push(task);
+        this.queue.sort((a, b) => b.priority - a.priority);
+
+        console.log(`📥 Task enqueued: ${task} (queue size: ${this.queue.length})`);
+
         // Prüfe ob Task den aktuellen Task unterbrechen kann
         if (this.currentTask && task.canInterrupt(this.currentTask)) {
             console.log(`⚠️ ${task} interrupts ${this.currentTask}`);
@@ -198,16 +205,14 @@ export class TaskQueueManager {
 
             // Pausiere aktuellen Task
             await this.pauseCurrentTask();
+
+            // Starte Queue-Verarbeitung neu (der neue Task hat höchste Priorität)
+            if (!this.isProcessing) {
+                await this.processQueue();
+            }
         }
-
-        // Füge zur Queue hinzu (sortiert nach Priorität)
-        this.queue.push(task);
-        this.queue.sort((a, b) => b.priority - a.priority);
-
-        console.log(`📥 Task enqueued: ${task} (queue size: ${this.queue.length})`);
-
-        // Starte Ausführung wenn kein Task läuft
-        if (!this.currentTask) {
+        // Starte Ausführung wenn kein Task läuft und Queue nicht bereits verarbeitet wird
+        else if (!this.currentTask && !this.isProcessing) {
             await this.processQueue();
         }
     }
@@ -216,18 +221,27 @@ export class TaskQueueManager {
      * Pausiert den aktuellen Task
      */
     async pauseCurrentTask() {
-        if (!this.currentTask || !this.currentTask.resumable) {
-            // Task kann nicht pausiert werden - abbrechen
-            if (this.currentTask) {
-                await this.cancelTask(this.currentTask.id);
-            }
+        // Prüfe ob überhaupt ein Task läuft
+        if (!this.currentTask) {
+            console.log(`⚠️ No current task to pause (already finished?)`);
+            return;
+        }
+
+        // Task kann nicht pausiert werden - abbrechen
+        if (!this.currentTask.resumable) {
+            console.log(`⚠️ Current task is not resumable, cancelling it`);
+            await this.cancelTask(this.currentTask.id);
             return;
         }
 
         console.log(`⏸️ Pausing ${this.currentTask}`);
 
         // Stoppe bot actions
-        await this.agent.actions.stop();
+        try {
+            await this.agent.actions.stop();
+        } catch (error) {
+            console.warn(`Warning: Could not stop actions:`, error.message);
+        }
 
         // Pausiere Task
         await this.currentTask.pause();
@@ -243,45 +257,52 @@ export class TaskQueueManager {
      * Verarbeitet die Task-Queue
      */
     async processQueue() {
-        // Keine Tasks in Queue
-        if (this.queue.length === 0) {
-            this.currentTask = null;
-            console.log(`✅ Task queue empty - bot is now idle`);
-            this.agent.bot.emit('idle');
+        // Verhindere parallele Ausführung
+        if (this.isProcessing) {
+            console.log(`⚠️ Already processing queue, skipping duplicate call`);
             return;
         }
 
-        // Nächsten Task holen (höchste Priorität)
-        const nextTask = this.queue.shift();
-        this.currentTask = nextTask;
+        this.isProcessing = true;
 
-        // Fortsetzen oder starten
-        if (nextTask.state === TaskState.PAUSED) {
-            console.log(`▶️ Resuming ${nextTask}`);
-            await nextTask.resume();
-        } else {
-            console.log(`▶️ Starting ${nextTask}`);
-            nextTask.markStarted();
-        }
-
-        // Task ausführen
         try {
-            const result = await this.executeTask(nextTask);
-            nextTask.markCompleted(result);
-            this.stats.totalTasksCompleted++;
-            console.log(`✅ ${nextTask} completed (runtime: ${nextTask.getRuntime()}ms)`);
-        } catch (error) {
-            nextTask.markFailed(error);
-            this.stats.totalTasksFailed++;
-            console.error(`❌ ${nextTask} failed:`, error);
+            while (this.queue.length > 0) {
+                // Nächsten Task holen (höchste Priorität)
+                const nextTask = this.queue.shift();
+                this.currentTask = nextTask;
+
+                // Fortsetzen oder starten
+                if (nextTask.state === TaskState.PAUSED) {
+                    console.log(`▶️ Resuming ${nextTask}`);
+                    await nextTask.resume();
+                } else {
+                    console.log(`▶️ Starting ${nextTask}`);
+                    nextTask.markStarted();
+                }
+
+                // Task ausführen
+                try {
+                    const result = await this.executeTask(nextTask);
+                    nextTask.markCompleted(result);
+                    this.stats.totalTasksCompleted++;
+                    console.log(`✅ ${nextTask} completed (runtime: ${nextTask.getRuntime()}ms)`);
+                } catch (error) {
+                    nextTask.markFailed(error);
+                    this.stats.totalTasksFailed++;
+                    console.error(`❌ ${nextTask} failed:`, error);
+                }
+
+                // Task in History verschieben
+                this.moveToHistory(nextTask);
+                this.currentTask = null;
+            }
+
+            // Keine Tasks mehr
+            console.log(`✅ Task queue empty - bot is now idle`);
+            this.agent.bot.emit('idle');
+        } finally {
+            this.isProcessing = false;
         }
-
-        // Task in History verschieben
-        this.moveToHistory(nextTask);
-        this.currentTask = null;
-
-        // Nächsten Task verarbeiten
-        await this.processQueue();
     }
 
     /**

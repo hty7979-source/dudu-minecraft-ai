@@ -9,7 +9,7 @@ import { ActionManager } from './action_manager.js';
 import { NPCContoller } from './npc/controller.js';
 import { MemoryBank } from './memory_bank.js';
 import { ContextualMemory } from './contextual_memory.js';
-import { TaskQueueManager } from './task_queue_manager.js';
+import { TaskQueueManager, TaskPriority } from './task_queue_manager.js';
 import { IdleTaskGenerator } from './idle_task_generator.js';
 import { DecisionEngine } from './decision_engine.js';
 import { SelfPrompter } from './self_prompter.js';
@@ -238,9 +238,9 @@ export class Agent {
                     // add the preceding message to the history to give context for newAction
                     this.history.add(source, message);
                 }
-                let execute_res = await executeCommand(this, message);
-                if (execute_res) 
-                    this.routeResponse(source, execute_res);
+
+                // Spieler-Command mit CRITICAL Priorität (10) über TaskQueue ausführen
+                await this.executeCommandWithPriority(message, TaskPriority.CRITICAL, source, `Player: ${user_command_name}`);
                 return true;
             }
         }
@@ -314,15 +314,11 @@ export class Agent {
                         this.routeResponse(source, pre_message);
                 }
 
-                let execute_res = await executeCommand(this, res);
-
-                console.log('Agent executed:', command_name, 'and got:', execute_res);
+                // LLM-Command mit HIGH Priorität (9 - custom) über TaskQueue ausführen
+                const LLM_COMMAND_PRIORITY = 9; // Zwischen CRITICAL (10) und HIGH (7)
+                await this.executeCommandWithPriority(res, LLM_COMMAND_PRIORITY, source, `LLM: ${command_name}`);
                 used_command = true;
-
-                if (execute_res)
-                    this.history.add('system', execute_res);
-                else
-                    break;
+                break; // Warte bis Command fertig ist
             }
             else { // conversation response
                 this.history.add(this.name, res);
@@ -334,6 +330,52 @@ export class Agent {
         }
 
         return used_command;
+    }
+
+    /**
+     * Führt einen Command mit gegebener Priorität über TaskQueue aus
+     * @param {string} message - Command-Message (z.B. "!build('house')")
+     * @param {number} priority - Task-Priorität (10=CRITICAL, 9=LLM, 7=HIGH, etc.)
+     * @param {string} source - Quelle des Commands (Spielername oder 'system')
+     * @param {string} taskName - Name für den Task (z.B. "Player: !build")
+     */
+    async executeCommandWithPriority(message, priority, source, taskName) {
+        return new Promise((resolve, reject) => {
+            const task = this.taskQueue.createTask(
+                taskName,
+                priority,
+                async (agent) => {
+                    try {
+                        console.log(`🎮 Executing command: ${message}`);
+                        const execute_res = await executeCommand(agent, message);
+
+                        if (execute_res) {
+                            agent.routeResponse(source, execute_res);
+                            agent.history.add('system', execute_res);
+                        }
+
+                        console.log(`✅ Command completed: ${taskName}`);
+                        resolve(execute_res);
+                        return execute_res;
+                    } catch (error) {
+                        console.error(`❌ Command failed: ${taskName}`, error);
+                        const errorMsg = `Command failed: ${error.message}`;
+                        agent.routeResponse(source, errorMsg);
+                        agent.history.add('system', errorMsg);
+                        reject(error);
+                        throw error;
+                    }
+                },
+                {
+                    interruptible: false, // Commands können nicht unterbrochen werden
+                    resumable: false,     // Commands können nicht pausiert werden
+                    timeout: -1           // Kein Timeout
+                }
+            );
+
+            // Task zur Queue hinzufügen
+            this.taskQueue.enqueueTask(task);
+        });
     }
 
     async routeResponse(to_player, message) {
