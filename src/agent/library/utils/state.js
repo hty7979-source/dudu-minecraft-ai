@@ -39,6 +39,7 @@ export function getFullState(agent) {
     const chestplate = bot.inventory.slots[6];
     const leggings = bot.inventory.slots[7];
     const boots = bot.inventory.slots[8];
+    const offHand = bot.inventory.slots[45]; // Offhand slot
 
     const state = {
         name: agent.name,
@@ -48,6 +49,7 @@ export function getFullState(agent) {
             gamemode: bot.game.gameMode,
             health: Math.round(bot.health),
             hunger: Math.round(bot.food),
+            xpLevel: bot.experience?.level ?? 0,
             biome: getBiomeName(bot),
             weather,
             timeOfDay: bot.time.timeOfDay,
@@ -72,7 +74,8 @@ export function getFullState(agent) {
                 chestplate: chestplate ? chestplate.name : null,
                 leggings: leggings ? leggings.name : null,
                 boots: boots ? boots.name : null,
-                mainHand: bot.heldItem ? bot.heldItem.name : null
+                mainHand: bot.heldItem ? bot.heldItem.name : null,
+                offHand: offHand ? offHand.name : null
             }
         },
         nearby: {

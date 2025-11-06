@@ -1,0 +1,1470 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dudu Bot Control Center</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .status-bar {
+            background: rgba(255,255,255,0.1);
+            padding: 10px 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 5px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.online {
+            background: #10b981;
+        }
+
+        .status-indicator.offline {
+            background: #ef4444;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        /* Agent Viewer & Chat Section */
+        .agent-section {
+            margin-top: 30px;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .agent-viewer-container {
+            width: 100%;
+            height: 400px;
+            background: #1a1a1a;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .agent-viewer {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .chat-section {
+            margin-top: 20px;
+        }
+
+        .chat-messages {
+            height: 200px;
+            overflow-y: auto;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
+
+        .chat-message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 6px;
+        }
+
+        .chat-message.bot {
+            background: #ede9fe;
+            color: #5b21b6;
+        }
+
+        .chat-message.user {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .chat-message.system {
+            background: #f3f4f6;
+            color: #4b5563;
+            font-style: italic;
+        }
+
+        .chat-input-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .chat-input:disabled {
+            background: #f3f4f6;
+            cursor: not-allowed;
+        }
+
+        .agent-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            background: #f9fafb;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .config-section {
+            margin-bottom: 30px;
+        }
+
+        .config-section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .form-group select,
+        .form-group input {
+            padding: 10px 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .form-group select:focus,
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #e5e7eb;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #dc2626;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .info-box {
+            background: #f0f9ff;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .advanced-settings {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #e5e7eb;
+        }
+
+        details summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: #667eea;
+            padding: 10px 0;
+        }
+
+        .logs-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            padding: 8px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .log-entry.error {
+            border-left: 3px solid #ef4444;
+        }
+
+        .log-entry.success {
+            border-left: 3px solid #10b981;
+        }
+
+        .log-entry.info {
+            border-left: 3px solid #3b82f6;
+        }
+
+        /* Bot Settings Styles */
+        .setting-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: #f9fafb;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .setting-wrapper label {
+            font-size: 0.9em;
+            font-weight: 600;
+            color: #374151;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .setting-wrapper label .help-icon {
+            font-size: 0.8em;
+            color: #9ca3af;
+            cursor: help;
+        }
+
+        .setting-wrapper input[type="text"],
+        .setting-wrapper input[type="number"],
+        .setting-wrapper select {
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 14px;
+            background: white;
+        }
+
+        .setting-wrapper input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Dudu Bot Control Center</h1>
+            <div class="status-bar">
+                <div class="status-item">
+                    <span class="status-indicator online" id="webui-status"></span>
+                    <span>WebUI: <span id="webui-status-text">Online</span></span>
+                </div>
+                <div class="status-item">
+                    <span class="status-indicator offline" id="bot-status"></span>
+                    <span>Bot: <span id="bot-status-text">Offline</span></span>
+                </div>
+                <div class="status-item">
+                    <span>Active Bots: <span id="bot-count">0</span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content">
+            <!-- LLM Configuration -->
+            <div class="config-section">
+                <h2>🧠 AI Model Configuration</h2>
+
+                <!-- Model Source Selection -->
+                <div class="form-group">
+                    <label for="model-source">Model Source</label>
+                    <select id="model-source" onchange="switchModelSource()">
+                        <option value="profiles">Saved Profiles</option>
+                        <option value="ollama">Ollama (Local)</option>
+                        <option value="lmstudio">LM Studio (Local)</option>
+                    </select>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="llm-select">LLM Model</label>
+                        <select id="llm-select">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="embedding-select">Embedding Model (Optional)</label>
+                        <select id="embedding-select">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Service Status -->
+                <div class="info-box" id="service-status-box" style="display:none;">
+                    <strong>🔌 Service Status:</strong>
+                    <div id="service-status-content"></div>
+                </div>
+
+                <div class="info-box">
+                    <strong>💡 Tipp:</strong> Lokale Modelle (Ollama, LM Studio) bieten bessere Performance und keine API-Kosten!
+                </div>
+            </div>
+
+            <!-- Server Configuration -->
+            <div class="config-section">
+                <h2>🎮 Minecraft Server</h2>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="mc-server">Server Address</label>
+                        <input type="text" id="mc-server" value="localhost" />
+                    </div>
+                    <div class="form-group">
+                        <label for="mc-port">Port</label>
+                        <input type="number" id="mc-port" value="25565" />
+                    </div>
+                    <div class="form-group">
+                        <label for="bot-name">Bot Name</label>
+                        <input type="text" id="bot-name" value="Dudu" />
+                    </div>
+                    <div class="form-group">
+                        <label for="mc-version">Version</label>
+                        <select id="mc-version">
+                            <option value="auto">Auto</option>
+                            <option value="1.21.6">1.21.6</option>
+                            <option value="1.20.4">1.20.4</option>
+                            <option value="1.20.1">1.20.1</option>
+                            <option value="1.19.4">1.19.4</option>
+                            <option value="1.18.2">1.18.2</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced Settings -->
+            <details class="advanced-settings">
+                <summary>⚙️ Advanced Settings</summary>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="auth-mode">Authentication</label>
+                        <select id="auth-mode">
+                            <option value="offline">Offline</option>
+                            <option value="microsoft">Microsoft</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="init-message">Init Message</label>
+                        <input type="text" id="init-message" value="" placeholder="Optional initialization message" />
+                    </div>
+                </div>
+            </details>
+
+            <!-- Bot Settings -->
+            <details class="advanced-settings">
+                <summary>🛠️ Bot Settings (Advanced)</summary>
+                <div id="bot-settings-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px;">
+                    <!-- Settings will be loaded dynamically from settings_spec.json -->
+                </div>
+            </details>
+
+            <!-- Control Buttons -->
+            <div class="button-group">
+                <button class="btn btn-primary" id="start-bot-btn" onclick="startBot()">
+                    🚀 Start Bot
+                </button>
+                <button class="btn btn-danger" id="stop-bot-btn" onclick="stopBot()" disabled>
+                    🛑 Stop Bot
+                </button>
+                <button class="btn btn-secondary" onclick="saveConfiguration()">
+                    💾 Save Configuration
+                </button>
+            </div>
+
+            <!-- Agent Viewer & Chat Section -->
+            <div class="config-section">
+                <h2 style="cursor: pointer; user-select: none;" onclick="toggleSection('agent-details')">
+                    🤖 Bot View & Communication
+                    <span id="agent-details-toggle" style="float: right; font-size: 20px;">▼</span>
+                </h2>
+                <div id="agent-details" style="display: none;">
+                    <div class="info-box" id="bot-not-running-msg">
+                        <strong>ℹ️ Info:</strong> Starte den Bot, um Live-Daten zu sehen.
+                    </div>
+
+                <!-- Agent Stats -->
+                <div class="agent-stats" id="agent-stats">
+                    <div class="stat-box">
+                        <div class="stat-label">Position</div>
+                        <div class="stat-value" id="stat-position">-</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Health</div>
+                        <div class="stat-value" id="stat-health">-</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Food</div>
+                        <div class="stat-value" id="stat-food">-</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">XP Level</div>
+                        <div class="stat-value" id="stat-xp">-</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Time</div>
+                        <div class="stat-value" id="stat-time">-</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Mode</div>
+                        <div class="stat-value" id="stat-mode">-</div>
+                    </div>
+                </div>
+
+                <!-- Equipment Section -->
+                <div class="config-section" id="equipment-section" style="margin-top: 20px;">
+                    <h3>⚔️ Ausrüstung</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                        <div class="stat-box">
+                            <div class="stat-label">🗡️ Haupthand</div>
+                            <div class="stat-value" id="equip-mainhand" style="font-size: 14px;">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">🛡️ Nebenhand</div>
+                            <div class="stat-value" id="equip-offhand" style="font-size: 14px;">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">⛑️ Helm</div>
+                            <div class="stat-value" id="equip-helmet" style="font-size: 14px;">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">🦺 Brustpanzer</div>
+                            <div class="stat-value" id="equip-chestplate" style="font-size: 14px;">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">🧤 Hose</div>
+                            <div class="stat-value" id="equip-leggings" style="font-size: 14px;">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">👢 Schuhe</div>
+                            <div class="stat-value" id="equip-boots" style="font-size: 14px;">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bot Actions -->
+                <div style="margin-bottom: 20px; display: flex; gap: 10px;">
+                    <button class="btn btn-secondary" onclick="pauseBot()">
+                        ⏸️ Pause
+                    </button>
+                    <button class="btn btn-secondary" onclick="resumeBot()">
+                        ▶️ Resume
+                    </button>
+                    <button class="btn btn-danger" onclick="stopBot()">
+                        🛑 Stop Bot
+                    </button>
+                </div>
+
+                <!-- 3D Viewer -->
+                <div class="agent-viewer-container">
+                    <iframe id="agent-viewer" class="agent-viewer"></iframe>
+                </div>
+
+                <!-- Inventory Section -->
+                <div class="config-section" id="inventory-section">
+                    <h3>🎒 Inventory</h3>
+                    <div id="inventory-display" style="background: #f9fafb; padding: 15px; border-radius: 8px; min-height: 100px;">
+                        <div style="color: #6b7280;">Lade Inventar...</div>
+                    </div>
+                </div>
+
+                <!-- Chat Section -->
+                <div class="chat-section">
+                    <h3>💬 Chat with Bot</h3>
+                    <div class="chat-messages" id="chat-messages">
+                        <div class="chat-message system">Starte den Bot, um zu chatten...</div>
+                    </div>
+                    <div class="chat-input-row">
+                        <input type="text"
+                               id="chat-input"
+                               class="chat-input"
+                               placeholder="Schreibe eine Nachricht an den Bot..."
+                               disabled
+                               onkeypress="handleChatKeypress(event)">
+                        <button class="btn btn-primary" onclick="sendChatMessage()" id="send-btn" disabled>
+                            📤 Send
+                        </button>
+                    </div>
+                </div>
+                </div>
+            </div>
+
+            <!-- Logs Section -->
+            <div class="logs-section">
+                <h3>📋 System Logs</h3>
+                <div id="logs-container">
+                    <div class="log-entry info">WebUI started successfully</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let botRunning = false;
+        let currentBots = [];
+        let allModelsData = null;
+        let currentModelSource = 'profiles';
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', async () => {
+            addLog('Initializing Control Panel...', 'info');
+            await loadModels();
+            await loadBotSettings();
+            await loadServiceStatus();
+            await loadCurrentSettings();
+            updateStatus();
+
+            // Poll status every 2 seconds
+            setInterval(updateStatus, 2000);
+        });
+
+        async function loadModels() {
+            try {
+                addLog('Loading models from server...', 'info');
+                const response = await fetch('/api/models');
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                console.log('Received data:', data);
+
+                // Store all models data globally
+                allModelsData = data;
+
+                // Initially populate with profiles
+                populateModels('profiles');
+
+                // Log discovered local models
+                if (data.local_models) {
+                    addLog(`Found ${data.local_models.ollama.length} Ollama models, ${data.local_models.lmstudio.length} LM Studio models`, 'info');
+                }
+
+                // Populate embedding dropdown
+                const embSelect = document.getElementById('embedding-select');
+                embSelect.innerHTML = '<option value="">None (optional)</option>';
+                if (data.embedding_models) {
+                    data.embedding_models.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.name;
+                        const displayText = model.size
+                            ? `${model.name} (${model.provider}, ${model.size})`
+                            : `${model.name} (${model.provider})`;
+                        option.textContent = displayText;
+                        embSelect.appendChild(option);
+                    });
+                }
+
+                // Set current values
+                if (data.current_settings) {
+                    const llmSelect = document.getElementById('llm-select');
+                    if (data.current_settings.profiles && data.current_settings.profiles.length > 0) {
+                        llmSelect.value = data.current_settings.profiles[0] || '';
+                    }
+                    document.getElementById('mc-server').value =
+                        data.current_settings.minecraft_server || 'localhost';
+                    document.getElementById('mc-port').value =
+                        data.current_settings.minecraft_port || '25565';
+                    document.getElementById('mc-version').value =
+                        data.current_settings.minecraft_version || 'auto';
+                    document.getElementById('auth-mode').value =
+                        data.current_settings.auth || 'offline';
+                }
+
+                addLog('Models loaded successfully', 'success');
+            } catch (error) {
+                addLog(`Error loading models: ${error.message}`, 'error');
+            }
+        }
+
+        function populateModels(source) {
+            if (!allModelsData) return;
+
+            const llmSelect = document.getElementById('llm-select');
+            llmSelect.innerHTML = '';
+
+            if (source === 'profiles') {
+                // Show profile-based models
+                if (allModelsData.llm_models && allModelsData.llm_models.length > 0) {
+                    allModelsData.llm_models.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.file;
+                        option.dataset.type = 'profile';
+
+                        // Handle model being an object or string
+                        let modelName = model.model;
+                        if (typeof modelName === 'object') {
+                            modelName = modelName.model || modelName.api || 'Complex Config';
+                        }
+
+                        option.textContent = `${model.name} (${modelName})`;
+                        llmSelect.appendChild(option);
+                    });
+                } else {
+                    llmSelect.innerHTML = '<option value="">No profiles found</option>';
+                }
+            } else if (source === 'ollama') {
+                // Show Ollama models
+                if (allModelsData.local_models && allModelsData.local_models.ollama.length > 0) {
+                    allModelsData.local_models.ollama.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.name;
+                        option.dataset.type = 'ollama';
+                        option.dataset.provider = 'ollama';
+                        option.textContent = `${model.name} (${model.size || 'Unknown size'})`;
+                        llmSelect.appendChild(option);
+                    });
+                } else {
+                    llmSelect.innerHTML = '<option value="">No Ollama models found - Is Ollama running?</option>';
+                }
+            } else if (source === 'lmstudio') {
+                // Show LM Studio models
+                if (allModelsData.local_models && allModelsData.local_models.lmstudio.length > 0) {
+                    allModelsData.local_models.lmstudio.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.name;
+                        option.dataset.type = 'lmstudio';
+                        option.dataset.provider = 'lmstudio';
+                        option.textContent = model.name;
+                        llmSelect.appendChild(option);
+                    });
+                } else {
+                    llmSelect.innerHTML = '<option value="">No LM Studio models found - Is LM Studio running?</option>';
+                }
+            }
+        }
+
+        function switchModelSource() {
+            currentModelSource = document.getElementById('model-source').value;
+            populateModels(currentModelSource);
+            addLog(`Switched to ${currentModelSource} model source`, 'info');
+        }
+
+        async function loadServiceStatus() {
+            try {
+                const response = await fetch('/api/service-status');
+                if (!response.ok) return;
+
+                const status = await response.json();
+                const statusBox = document.getElementById('service-status-box');
+                const statusContent = document.getElementById('service-status-content');
+
+                let statusHtml = '';
+                if (status.ollama.available) {
+                    statusHtml += '<div>✅ Ollama: Online</div>';
+                } else {
+                    statusHtml += '<div>❌ Ollama: Offline</div>';
+                }
+
+                if (status.lmstudio.available) {
+                    statusHtml += '<div>✅ LM Studio: Online</div>';
+                } else {
+                    statusHtml += '<div>❌ LM Studio: Offline</div>';
+                }
+
+                statusContent.innerHTML = statusHtml;
+                statusBox.style.display = 'block';
+            } catch (error) {
+                console.error('Error loading service status:', error);
+            }
+        }
+
+        function toggleSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            const toggle = document.getElementById(sectionId + '-toggle');
+
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
+                toggle.textContent = '▲';
+            } else {
+                section.style.display = 'none';
+                toggle.textContent = '▼';
+            }
+        }
+
+        async function loadBotSettings() {
+            try {
+                const response = await fetch('/settings_spec.json');
+                if (!response.ok) {
+                    throw new Error('Failed to load settings spec');
+                }
+
+                const settingsSpec = await response.json();
+                const grid = document.getElementById('bot-settings-grid');
+                grid.innerHTML = '';
+
+                // Load saved settings from localStorage
+                const savedBotSettings = JSON.parse(localStorage.getItem('dudu-bot-advanced-settings') || '{}');
+
+                // Exclude certain settings that are already in the UI
+                const excludeSettings = ['profile', 'host', 'port', 'minecraft_version', 'auth', 'init_message'];
+
+                Object.keys(settingsSpec).forEach(key => {
+                    if (excludeSettings.includes(key)) return;
+
+                    const cfg = settingsSpec[key];
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'setting-wrapper';
+
+                    const label = document.createElement('label');
+                    label.textContent = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    if (cfg.description) {
+                        label.title = cfg.description;
+                        const helpIcon = document.createElement('span');
+                        helpIcon.className = 'help-icon';
+                        helpIcon.textContent = '?';
+                        helpIcon.title = cfg.description;
+                        label.appendChild(helpIcon);
+                    }
+
+                    let input;
+                    const savedValue = savedBotSettings[key];
+
+                    switch (cfg.type) {
+                        case 'boolean':
+                            input = document.createElement('input');
+                            input.type = 'checkbox';
+                            input.checked = savedValue !== undefined ? savedValue : (cfg.default === true);
+                            break;
+                        case 'number':
+                            input = document.createElement('input');
+                            input.type = 'number';
+                            input.value = savedValue !== undefined ? savedValue : (cfg.default || 0);
+                            break;
+                        case 'array':
+                            input = document.createElement('input');
+                            input.type = 'text';
+                            input.value = savedValue !== undefined ? JSON.stringify(savedValue) : (Array.isArray(cfg.default) ? JSON.stringify(cfg.default) : '[]');
+                            input.placeholder = 'JSON array';
+                            break;
+                        case 'object':
+                            input = document.createElement('input');
+                            input.type = 'text';
+                            input.value = savedValue !== undefined ? JSON.stringify(savedValue) : (cfg.default ? JSON.stringify(cfg.default) : 'null');
+                            input.placeholder = 'JSON object or null';
+                            break;
+                        default:
+                            if (cfg.options && cfg.options.length > 0) {
+                                input = document.createElement('select');
+                                cfg.options.forEach(opt => {
+                                    const option = document.createElement('option');
+                                    option.value = opt;
+                                    option.textContent = opt;
+                                    if (savedValue !== undefined) {
+                                        if (opt === savedValue) option.selected = true;
+                                    } else {
+                                        if (opt === cfg.default) option.selected = true;
+                                    }
+                                    input.appendChild(option);
+                                });
+                            } else {
+                                input = document.createElement('input');
+                                input.type = 'text';
+                                input.value = savedValue !== undefined ? savedValue : (typeof cfg.default === 'string' ? cfg.default : '');
+                            }
+                    }
+
+                    input.id = `bot-setting-${key}`;
+                    input.title = cfg.description || '';
+                    input.dataset.settingKey = key;
+                    input.dataset.settingType = cfg.type;
+
+                    // Auto-save on change
+                    input.addEventListener('change', () => saveBotSettings());
+                    input.addEventListener('input', () => saveBotSettings());
+
+                    wrapper.appendChild(label);
+                    wrapper.appendChild(input);
+                    grid.appendChild(wrapper);
+                });
+
+                addLog('Bot settings loaded successfully', 'success');
+            } catch (error) {
+                console.error('Error loading bot settings:', error);
+                addLog(`Error loading bot settings: ${error.message}`, 'error');
+            }
+        }
+
+        function saveBotSettings() {
+            const settings = {};
+            const grid = document.getElementById('bot-settings-grid');
+
+            grid.querySelectorAll('input, select').forEach(input => {
+                const key = input.dataset.settingKey;
+                const type = input.dataset.settingType;
+
+                if (!key) return;
+
+                let value;
+                if (input.type === 'checkbox') {
+                    value = input.checked;
+                } else if (type === 'number') {
+                    value = parseFloat(input.value) || 0;
+                } else if (type === 'array' || type === 'object') {
+                    try {
+                        value = JSON.parse(input.value);
+                    } catch (e) {
+                        value = type === 'array' ? [] : null;
+                    }
+                } else {
+                    value = input.value;
+                }
+
+                settings[key] = value;
+            });
+
+            localStorage.setItem('dudu-bot-advanced-settings', JSON.stringify(settings));
+        }
+
+        async function loadCurrentSettings() {
+            // Load saved settings from localStorage
+            const saved = localStorage.getItem('dudu-bot-settings');
+            if (saved) {
+                try {
+                    const settings = JSON.parse(saved);
+                    if (settings.botName) document.getElementById('bot-name').value = settings.botName;
+                    if (settings.mcServer) document.getElementById('mc-server').value = settings.mcServer;
+                    if (settings.mcPort) document.getElementById('mc-port').value = settings.mcPort;
+                    if (settings.version) document.getElementById('mc-version').value = settings.version;
+                    if (settings.authMode) document.getElementById('auth-mode').value = settings.authMode;
+                    if (settings.initMessage) document.getElementById('init-message').value = settings.initMessage;
+                    if (settings.modelSource) {
+                        document.getElementById('model-source').value = settings.modelSource;
+                        currentModelSource = settings.modelSource;
+                    }
+                    if (settings.llmModel) document.getElementById('llm-select').value = settings.llmModel;
+                    if (settings.embeddingModel) document.getElementById('embedding-select').value = settings.embeddingModel;
+
+                    addLog('Settings loaded from browser storage', 'info');
+                } catch (e) {
+                    console.error('Error loading settings:', e);
+                }
+            }
+
+            // Setup auto-save listeners for all inputs
+            setupAutoSave();
+        }
+
+        function setupAutoSave() {
+            // Auto-save for all main settings
+            const elementsToWatch = [
+                'bot-name', 'mc-server', 'mc-port', 'mc-version',
+                'auth-mode', 'init-message', 'model-source',
+                'llm-select', 'embedding-select'
+            ];
+
+            elementsToWatch.forEach(id => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.addEventListener('change', saveCurrentSettings);
+                    element.addEventListener('input', saveCurrentSettings);
+                }
+            });
+        }
+
+        function saveCurrentSettings() {
+            const settings = {
+                botName: document.getElementById('bot-name').value,
+                mcServer: document.getElementById('mc-server').value,
+                mcPort: document.getElementById('mc-port').value,
+                version: document.getElementById('mc-version').value,
+                authMode: document.getElementById('auth-mode').value,
+                initMessage: document.getElementById('init-message').value,
+                modelSource: document.getElementById('model-source').value,
+                llmModel: document.getElementById('llm-select').value,
+                embeddingModel: document.getElementById('embedding-select').value
+            };
+
+            localStorage.setItem('dudu-bot-settings', JSON.stringify(settings));
+        }
+
+        async function startBot() {
+            const llmSelect = document.getElementById('llm-select');
+            const selectedOption = llmSelect.options[llmSelect.selectedIndex];
+
+            const config = {
+                bot_name: document.getElementById('bot-name').value,
+                llm_model: llmSelect.value,
+                model_type: selectedOption?.dataset.type || 'profile',
+                model_provider: selectedOption?.dataset.provider,
+                embedding_model: document.getElementById('embedding-select').value,
+                minecraft_server: document.getElementById('mc-server').value,
+                minecraft_port: document.getElementById('mc-port').value,
+                minecraft_version: document.getElementById('mc-version').value,
+                auth: document.getElementById('auth-mode').value,
+                init_message: document.getElementById('init-message').value
+            };
+
+            // Load and include bot advanced settings from localStorage
+            const savedBotSettings = localStorage.getItem('dudu-bot-advanced-settings');
+            if (savedBotSettings) {
+                try {
+                    const botSettings = JSON.parse(savedBotSettings);
+                    // Merge bot settings into config
+                    config.bot_settings = botSettings;
+                    console.log('Loaded bot settings from localStorage:', botSettings);
+                } catch (e) {
+                    console.error('Error loading bot settings:', e);
+                }
+            }
+
+            if (!config.llm_model) {
+                addLog('Please select a LLM model first!', 'error');
+                return;
+            }
+
+            try {
+                addLog(`Starting bot '${config.bot_name}'...`, 'info');
+                document.getElementById('start-bot-btn').disabled = true;
+
+                const response = await fetch('/api/start-bot', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    botRunning = true;
+                    updateButtons();
+                    addLog(`✅ Bot '${result.bot_name}' started successfully!`, 'success');
+                } else {
+                    addLog(`❌ Failed to start bot: ${result.error}`, 'error');
+                    document.getElementById('start-bot-btn').disabled = false;
+                }
+            } catch (error) {
+                addLog(`❌ Error starting bot: ${error.message}`, 'error');
+                document.getElementById('start-bot-btn').disabled = false;
+            }
+        }
+
+        async function stopBot() {
+            const botName = document.getElementById('bot-name').value;
+            try {
+                addLog(`Stopping bot '${botName}'...`, 'info');
+                const response = await fetch('/api/stop-bot', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bot_name: botName })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    botRunning = false;
+                    updateButtons();
+                    addLog(`✅ Bot '${botName}' stopped`, 'success');
+                } else {
+                    addLog(`❌ Failed to stop bot: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                addLog(`❌ Error stopping bot: ${error.message}`, 'error');
+            }
+        }
+
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/bot-status');
+                const status = await response.json();
+
+                botRunning = status.running;
+                currentBots = status.agents || [];
+
+                updateButtons();
+
+                // Update status indicators
+                document.getElementById('webui-status').className = 'status-indicator online';
+                document.getElementById('webui-status-text').textContent = 'Online';
+
+                document.getElementById('bot-status').className =
+                    `status-indicator ${botRunning ? 'online' : 'offline'}`;
+                document.getElementById('bot-status-text').textContent =
+                    botRunning ? 'Online' : 'Offline';
+
+                document.getElementById('bot-count').textContent = status.count || 0;
+
+            } catch (error) {
+                // WebUI offline
+                document.getElementById('webui-status').className = 'status-indicator offline';
+                document.getElementById('webui-status-text').textContent = 'Offline';
+            }
+        }
+
+        function updateButtons() {
+            document.getElementById('start-bot-btn').disabled = botRunning;
+            document.getElementById('stop-bot-btn').disabled = !botRunning;
+        }
+
+        function saveConfiguration() {
+            const settings = {
+                botName: document.getElementById('bot-name').value,
+                version: document.getElementById('mc-version').value,
+                llmModel: document.getElementById('llm-select').value,
+                embeddingModel: document.getElementById('embedding-select').value,
+                server: document.getElementById('mc-server').value,
+                port: document.getElementById('mc-port').value
+            };
+
+            localStorage.setItem('dudu-bot-settings', JSON.stringify(settings));
+            addLog('💾 Configuration saved to browser storage', 'success');
+
+            // Also save to server
+            fetch('/api/configure', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    llm_model: settings.llmModel,
+                    minecraft_server: settings.server,
+                    minecraft_port: settings.port,
+                    minecraft_version: settings.version
+                })
+            }).then(() => {
+                addLog('💾 Configuration saved to server', 'success');
+            }).catch(err => {
+                addLog(`⚠️ Failed to save to server: ${err.message}`, 'error');
+            });
+        }
+
+        function addLog(message, type = 'info') {
+            const container = document.getElementById('logs-container');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+
+            // Keep only last 50 logs
+            while (container.children.length > 50) {
+                container.removeChild(container.firstChild);
+            }
+        }
+
+        // ===== Socket.IO Integration =====
+        const socket = io();
+        let currentAgentName = null;
+        let agentConnected = false;
+
+        // Socket.IO connection
+        socket.on('connect', () => {
+            addLog('🔌 Connected to MindServer', 'success');
+            socket.emit('listen-to-agents');
+        });
+
+        socket.on('disconnect', () => {
+            addLog('⚠️ Disconnected from MindServer', 'error');
+        });
+
+        // Listen for bot output messages (from old UI)
+        socket.on('bot-output', (agentName, message) => {
+            addChatMessage(`${agentName}: ${message}`, 'bot');
+        });
+
+        // Listen for aggregated state updates (THIS IS THE KEY EVENT!)
+        socket.on('state-update', (states) => {
+            if (!states) return;
+
+            // Get the first agent (current bot)
+            const agentNames = Object.keys(states);
+            if (agentNames.length === 0) return;
+
+            const agentName = agentNames[0];
+            const state = states[agentName];
+
+            if (!state || state.error) return;
+
+            // DEBUG: Log the entire state to see the structure
+            console.log('Received state:', JSON.stringify(state, null, 2));
+
+            // Update current agent name if not set
+            if (!currentAgentName) {
+                currentAgentName = agentName;
+
+                // Note: Viewer will be loaded via 'agents' Socket.IO event which includes viewerPort
+
+                // Hide the "not running" message
+                const notRunningMsg = document.getElementById('bot-not-running-msg');
+                if (notRunningMsg) {
+                    notRunningMsg.style.display = 'none';
+                }
+
+                // Enable chat
+                document.getElementById('chat-input').disabled = false;
+                document.getElementById('send-btn').disabled = false;
+
+                addLog(`Bot '${agentName}' connected and sending data`, 'success');
+            }
+
+            // Extract data from state.gameplay (the actual structure from getFullState)
+            const gp = state.gameplay || {};
+
+            // Map to the correct property names from getFullState
+            const stateData = {
+                position: gp.position,
+                health: gp.health,
+                food: gp.hunger,  // It's called 'hunger' in the state, not 'food'
+                xp: gp.xpLevel,  // Experience level
+                time_of_day: gp.timeOfDay,  // It's camelCase, not snake_case
+                mode: gp.gamemode,  // It's 'gamemode', not 'mode'
+                inventory: state.inventory  // Inventory is at root level
+            };
+
+            console.log('Extracted state data:', stateData);
+
+            updateAgentDisplay(stateData);
+        });
+
+        // Listen for agents status (backend emits 'agents-status', not 'agents')
+        socket.on('agents-status', (agents) => {
+            // DEBUG: Log agents data
+            console.log('Received agents-status event:', JSON.stringify(agents, null, 2));
+
+            if (agents && agents.length > 0) {
+                // Hide the "not running" message
+                const notRunningMsg = document.getElementById('bot-not-running-msg');
+                if (notRunningMsg) {
+                    notRunningMsg.style.display = 'none';
+                }
+
+                // Enable chat
+                document.getElementById('chat-input').disabled = false;
+                document.getElementById('send-btn').disabled = false;
+
+                // Set current agent if not already set or if agent changed
+                const firstAgent = agents[0];
+                console.log('First agent:', firstAgent);
+                console.log('  - name:', firstAgent.name);
+                console.log('  - viewerPort:', firstAgent.viewerPort);
+                console.log('  - in_game:', firstAgent.in_game);
+
+                if (firstAgent.name) {
+                    // Update current agent name
+                    if (firstAgent.name !== currentAgentName) {
+                        currentAgentName = firstAgent.name;
+                        addLog(`Agent '${currentAgentName}' detected`, 'info');
+                    }
+
+                    // Load Prismarine viewer using agent's viewer port
+                    const viewer = document.getElementById('agent-viewer');
+                    if (firstAgent.viewerPort && firstAgent.in_game) {
+                        const viewerUrl = `http://localhost:${firstAgent.viewerPort}`;
+                        console.log('Loading viewer from:', viewerUrl);
+                        viewer.src = viewerUrl;
+                        addLog(`Loading 3D viewer on port ${firstAgent.viewerPort}`, 'info');
+                    } else {
+                        console.log('Viewer not loaded - viewerPort:', firstAgent.viewerPort, 'in_game:', firstAgent.in_game);
+                        viewer.src = 'about:blank';
+                        if (!firstAgent.in_game) {
+                            addLog('Bot not in game yet, waiting...', 'info');
+                        }
+                    }
+                }
+            } else {
+                // Show the "not running" message
+                const notRunningMsg = document.getElementById('bot-not-running-msg');
+                if (notRunningMsg) {
+                    notRunningMsg.style.display = 'block';
+                }
+
+                // Disable chat
+                document.getElementById('chat-input').disabled = true;
+                document.getElementById('send-btn').disabled = true;
+
+                // Reset agent name and viewer
+                currentAgentName = null;
+                const viewer = document.getElementById('agent-viewer');
+                viewer.src = 'about:blank';
+            }
+        });
+
+        // Update agent display (stats, etc.)
+        function updateAgentDisplay(state) {
+            if (!state) return;
+
+            // Update stats
+            if (state.position) {
+                const pos = state.position;
+                document.getElementById('stat-position').textContent =
+                    `${Math.floor(pos.x)}, ${Math.floor(pos.y)}, ${Math.floor(pos.z)}`;
+            }
+
+            if (state.health !== undefined) {
+                document.getElementById('stat-health').textContent =
+                    `${state.health}/20`;
+            }
+
+            if (state.food !== undefined) {
+                document.getElementById('stat-food').textContent =
+                    `${state.food}/20`;
+            }
+
+            if (state.xp !== undefined) {
+                document.getElementById('stat-xp').textContent = state.xp;
+            }
+
+            if (state.time_of_day !== undefined) {
+                document.getElementById('stat-time').textContent = formatMinecraftTime(state.time_of_day);
+            }
+
+            if (state.mode) {
+                document.getElementById('stat-mode').textContent = state.mode;
+            }
+
+            // Update inventory (pass inventory.counts to the display function)
+            if (state.inventory && state.inventory.counts) {
+                updateInventoryDisplay(state.inventory.counts);
+            }
+
+            // Update equipment
+            if (state.inventory && state.inventory.equipment) {
+                const eq = state.inventory.equipment;
+                document.getElementById('equip-mainhand').textContent = eq.mainHand || '-';
+                document.getElementById('equip-offhand').textContent = eq.offHand || '-';
+                document.getElementById('equip-helmet').textContent = eq.helmet || '-';
+                document.getElementById('equip-chestplate').textContent = eq.chestplate || '-';
+                document.getElementById('equip-leggings').textContent = eq.leggings || '-';
+                document.getElementById('equip-boots').textContent = eq.boots || '-';
+            }
+        }
+
+        // Format Minecraft time
+        function formatMinecraftTime(ticks) {
+            const hours = Math.floor(((ticks / 1000) + 6) % 24);
+            const minutes = Math.floor((ticks % 1000) / 1000 * 60);
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        }
+
+        // Update inventory display
+        function updateInventoryDisplay(inventory) {
+            const container = document.getElementById('inventory-display');
+            if (!inventory || Object.keys(inventory).length === 0) {
+                container.innerHTML = '<div style="color: #6b7280;">Inventar ist leer</div>';
+                return;
+            }
+
+            let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;">';
+
+            // Sort by count descending
+            const sorted = Object.entries(inventory).sort((a, b) => b[1] - a[1]);
+
+            sorted.forEach(([item, count]) => {
+                html += `
+                    <div style="background: white; padding: 10px; border-radius: 6px; border: 1px solid #e5e7eb;">
+                        <div style="font-weight: 600; color: #111827;">${item}</div>
+                        <div style="color: #6b7280; font-size: 14px;">x${count}</div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        // Pause bot
+        function pauseBot() {
+            if (!currentAgentName) return;
+            socket.emit('agent-message', {
+                agent: currentAgentName,
+                message: '!pause'
+            });
+            addLog('Bot pausiert', 'info');
+        }
+
+        // Resume bot
+        function resumeBot() {
+            if (!currentAgentName) return;
+            socket.emit('agent-message', {
+                agent: currentAgentName,
+                message: '!resume'
+            });
+            addLog('Bot fortgesetzt', 'info');
+        }
+
+        // Chat functions
+        function addChatMessage(message, type) {
+            const container = document.getElementById('chat-messages');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `chat-message ${type}`;
+            msgDiv.textContent = message;
+            container.appendChild(msgDiv);
+            container.scrollTop = container.scrollHeight;
+
+            // Keep only last 50 messages
+            while (container.children.length > 50) {
+                container.removeChild(container.firstChild);
+            }
+        }
+
+        function sendChatMessage() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+
+            if (!message) return;
+            if (!currentAgentName) {
+                addChatMessage('❌ Kein Bot verbunden', 'system');
+                return;
+            }
+
+            // Add user message to chat
+            addChatMessage(`Du: ${message}`, 'user');
+
+            // Send to bot via socket
+            socket.emit('agent-message', {
+                agent: currentAgentName,
+                message: message
+            });
+
+            // Clear input
+            input.value = '';
+        }
+
+        function handleChatKeypress(event) {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        }
+
+        // When bot starts, show the agent section
+        const originalStartBot = startBot;
+        startBot = async function() {
+            await originalStartBot();
+
+            // Wait a bit for the bot to connect
+            setTimeout(() => {
+                addChatMessage('🤖 Bot gestartet! Du kannst jetzt mit ihm chatten.', 'system');
+            }, 2000);
+        };
+    </script>
+</body>
+</html>

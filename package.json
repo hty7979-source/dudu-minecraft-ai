@@ -21,7 +21,9 @@
     "artificial-intelligence"
   ],
   "scripts": {
-    "start": "node main.js",
+    "start": "node webui-launcher.js",
+    "start-direct": "node main.js",
+    "webui": "node webui-launcher.js",
     "dev": "node main.js --dev",
     "test": "node test/test-systems.js",
     "test-building": "node test/test-building.js",

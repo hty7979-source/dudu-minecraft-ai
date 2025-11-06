@@ -44,15 +44,41 @@ export function logoutAgent(agentName) {
     }
 }
 
+// Express app instance
+let app;
+
 // Initialize the server
 export function createMindServer(host_public = false, port = 8080) {
-    const app = express();
+    app = express();
     server = http.createServer(app);
     io = new Server(server);
 
+    // Middleware for JSON parsing
+    app.use(express.json());
+
     // Serve static files
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    app.use(express.static(path.join(__dirname, 'public')));
+
+    // IMPORTANT: Define routes BEFORE static middleware
+    // Default route to control panel
+    app.get('/', (req, res) => {
+        res.sendFile(path.join(__dirname, 'public', 'control-panel.html'));
+    });
+
+    // Control panel route
+    app.get('/control', (req, res) => {
+        res.sendFile(path.join(__dirname, 'public', 'control-panel.html'));
+    });
+
+    // Chat interface route (old interface)
+    app.get('/chat', (req, res) => {
+        res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    });
+
+    // Serve other static files (CSS, JS, etc.) but NOT index.html by default
+    app.use(express.static(path.join(__dirname, 'public'), {
+        index: false  // Prevent automatic index.html serving
+    }));
 
     // Socket.io connection handling
     io.on('connection', (socket) => {
@@ -280,4 +306,5 @@ function removeListener(listener_socket) {
 // Optional: export these if you need access to them from other files
 export const getIO = () => io;
 export const getServer = () => server;
+export const getExpressApp = () => app;
 export const numStateListeners = () => agent_listeners.length;
