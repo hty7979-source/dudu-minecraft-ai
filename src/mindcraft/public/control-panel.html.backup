@@ -42,24 +42,7 @@
 
         .sidebar-header h1 {
             font-size: 1.5rem;
-            margin-bottom: 15px;
-        }
-
-        .sidebar-header .status-bar {
-            gap: 10px;
-            padding: 0;
-            flex-direction: column;
-            align-items: flex-start;
-        }
-
-        .sidebar-header .status-item {
-            font-size: 0.85rem;
-            margin: 0;
-            width: 100%;
-        }
-
-        .sidebar-header .status-item span {
-            color: rgba(255,255,255,0.9);
+            margin-bottom: 10px;
         }
 
         .sidebar-menu {
@@ -503,120 +486,6 @@
 
                 <!-- Agent Stats -->
                 <div class="agent-stats" id="agent-stats">
-                    <div class="stat-box">
-                        <div class="stat-label">Position</div>
-                        <div class="stat-value" id="stat-position">-</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-label">Health</div>
-                        <div class="stat-value" id="stat-health">-</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-label">Food</div>
-                        <div class="stat-value" id="stat-food">-</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-label">XP Level</div>
-                        <div class="stat-value" id="stat-xp">-</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-label">Time</div>
-                        <div class="stat-value" id="stat-time">-</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-label">Mode</div>
-                        <div class="stat-value" id="stat-mode">-</div>
-                    </div>
-                </div>
-
-                <!-- Equipment Section -->
-                <div class="config-section" id="equipment-section" style="margin-top: 20px;">
-                    <h3>⚔️ Ausrüstung</h3>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
-                        <div class="stat-box">
-                            <div class="stat-label">🗡️ Haupthand</div>
-                            <div class="stat-value" id="equip-mainhand" style="font-size: 14px;">-</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">🛡️ Nebenhand</div>
-                            <div class="stat-value" id="equip-offhand" style="font-size: 14px;">-</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">⛑️ Helm</div>
-                            <div class="stat-value" id="equip-helmet" style="font-size: 14px;">-</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">🦺 Brustpanzer</div>
-                            <div class="stat-value" id="equip-chestplate" style="font-size: 14px;">-</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">🧤 Hose</div>
-                            <div class="stat-value" id="equip-leggings" style="font-size: 14px;">-</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">👢 Schuhe</div>
-                            <div class="stat-value" id="equip-boots" style="font-size: 14px;">-</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Bot Actions -->
-                <div style="margin: 20px 0; display: flex; gap: 10px;">
-                    <button class="btn btn-secondary" onclick="pauseBot()">
-                        ⏸️ Pause
-                    </button>
-                    <button class="btn btn-secondary" onclick="resumeBot()">
-                        ▶️ Resume
-                    </button>
-                    <button class="btn btn-danger" onclick="stopBot()">
-                        🛑 Stop Bot
-                    </button>
-                </div>
-
-                <!-- 3D Viewer -->
-                <div class="agent-viewer-container">
-                    <iframe id="agent-viewer" class="agent-viewer"></iframe>
-                </div>
-
-                <!-- Inventory Section -->
-                <div class="config-section" id="inventory-section" style="margin-top: 20px;">
-                    <h3>🎒 Inventory</h3>
-                    <div id="inventory-display" style="background: #f9fafb; padding: 15px; border-radius: 8px; min-height: 100px;">
-                        <div style="color: #6b7280;">Lade Inventar...</div>
-                    </div>
-                </div>
-
-                <!-- Chat Section -->
-                <div class="chat-section" style="margin-top: 20px;">
-                    <h3>💬 Chat with Bot</h3>
-                    <div class="chat-messages" id="chat-messages">
-                        <div class="chat-message system">Starte den Bot, um zu chatten...</div>
-                    </div>
-                    <div class="chat-input-row">
-                        <input type="text"
-                               id="chat-input"
-                               class="chat-input"
-                               placeholder="Schreibe eine Nachricht an den Bot..."
-                               disabled
-                               onkeypress="handleChatKeypress(event)">
-                        <button class="btn btn-primary" onclick="sendChatMessage()" id="send-btn" disabled>
-                            📤 Send
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Configuration View -->
-        <div id="configuration-view" class="view-section">
-            <div class="header">
-                <h1>⚙️ Configuration</h1>
-            </div>
-
-            <div class="content">
-            <!-- LLM Configuration -->
-            <div class="config-section">
-                <h2>🧠 AI Model Configuration</h2>
 
                 <!-- Model Source Selection -->
                 <div class="form-group">
@@ -722,19 +591,129 @@
                     💾 Save Configuration
                 </button>
             </div>
-        </div>
 
-        <!-- Logs View -->
-        <div id="logs-view" class="view-section">
-            <div class="header">
-                <h1>📋 System Logs</h1>
+            <!-- Agent Viewer & Chat Section -->
+            <div class="config-section">
+                <h2 style="cursor: pointer; user-select: none;" onclick="toggleSection('agent-details')">
+                    🤖 Bot View & Communication
+                    <span id="agent-details-toggle" style="float: right; font-size: 20px;">▼</span>
+                </h2>
+                <div id="agent-details" style="display: none;">
+                    <div class="info-box" id="bot-not-running-msg">
+                        <strong>ℹ️ Info:</strong> Starte den Bot, um Live-Daten zu sehen.
+                    </div>
+
+                <!-- Agent Stats -->
+                <div class="agent-stats" id="agent-stats">
+                    <div class="stat-box">
+                        <div class="stat-label">Position</div>
+                        <div class="stat-value" id="stat-position">-</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Health</div>
+                        <div class="stat-value" id="stat-health">-</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Food</div>
+                        <div class="stat-value" id="stat-food">-</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">XP Level</div>
+                        <div class="stat-value" id="stat-xp">-</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Time</div>
+                        <div class="stat-value" id="stat-time">-</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Mode</div>
+                        <div class="stat-value" id="stat-mode">-</div>
+                    </div>
+                </div>
+
+                <!-- Equipment Section -->
+                <div class="config-section" id="equipment-section" style="margin-top: 20px;">
+                    <h3>⚔️ Ausrüstung</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                        <div class="stat-box">
+                            <div class="stat-label">🗡️ Haupthand</div>
+                            <div class="stat-value" id="equip-mainhand" style="font-size: 14px;">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">🛡️ Nebenhand</div>
+                            <div class="stat-value" id="equip-offhand" style="font-size: 14px;">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">⛑️ Helm</div>
+                            <div class="stat-value" id="equip-helmet" style="font-size: 14px;">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">🦺 Brustpanzer</div>
+                            <div class="stat-value" id="equip-chestplate" style="font-size: 14px;">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">🧤 Hose</div>
+                            <div class="stat-value" id="equip-leggings" style="font-size: 14px;">-</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">👢 Schuhe</div>
+                            <div class="stat-value" id="equip-boots" style="font-size: 14px;">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bot Actions -->
+                <div style="margin-bottom: 20px; display: flex; gap: 10px;">
+                    <button class="btn btn-secondary" onclick="pauseBot()">
+                        ⏸️ Pause
+                    </button>
+                    <button class="btn btn-secondary" onclick="resumeBot()">
+                        ▶️ Resume
+                    </button>
+                    <button class="btn btn-danger" onclick="stopBot()">
+                        🛑 Stop Bot
+                    </button>
+                </div>
+
+                <!-- 3D Viewer -->
+                <div class="agent-viewer-container">
+                    <iframe id="agent-viewer" class="agent-viewer"></iframe>
+                </div>
+
+                <!-- Inventory Section -->
+                <div class="config-section" id="inventory-section">
+                    <h3>🎒 Inventory</h3>
+                    <div id="inventory-display" style="background: #f9fafb; padding: 15px; border-radius: 8px; min-height: 100px;">
+                        <div style="color: #6b7280;">Lade Inventar...</div>
+                    </div>
+                </div>
+
+                <!-- Chat Section -->
+                <div class="chat-section">
+                    <h3>💬 Chat with Bot</h3>
+                    <div class="chat-messages" id="chat-messages">
+                        <div class="chat-message system">Starte den Bot, um zu chatten...</div>
+                    </div>
+                    <div class="chat-input-row">
+                        <input type="text"
+                               id="chat-input"
+                               class="chat-input"
+                               placeholder="Schreibe eine Nachricht an den Bot..."
+                               disabled
+                               onkeypress="handleChatKeypress(event)">
+                        <button class="btn btn-primary" onclick="sendChatMessage()" id="send-btn" disabled>
+                            📤 Send
+                        </button>
+                    </div>
+                </div>
+                </div>
             </div>
 
-            <div class="content">
-                <div class="logs-section">
-                    <div id="logs-container">
-                        <div class="log-entry info">WebUI started successfully</div>
-                    </div>
+            <!-- Logs Section -->
+            <div class="logs-section">
+                <h3>📋 System Logs</h3>
+                <div id="logs-container">
+                    <div class="log-entry info">WebUI started successfully</div>
                 </div>
             </div>
         </div>
@@ -745,26 +724,6 @@
         let currentBots = [];
         let allModelsData = null;
         let currentModelSource = 'profiles';
-
-        // View Switching
-        function showView(viewName) {
-            // Hide all views
-            document.querySelectorAll('.view-section').forEach(view => {
-                view.classList.remove('active');
-            });
-
-            // Show selected view
-            const targetView = document.getElementById(`${viewName}-view`);
-            if (targetView) {
-                targetView.classList.add('active');
-            }
-
-            // Update sidebar menu
-            document.querySelectorAll('.sidebar-menu a').forEach(link => {
-                link.classList.remove('active');
-            });
-            event.target.classList.add('active');
-        }
 
         // Initialize on load
         document.addEventListener('DOMContentLoaded', async () => {
